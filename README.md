@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-Android-brightgreen?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/deploy-Docker-2496ED?style=flat-square&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Home%20Assistant-ready-18BCF2?style=flat-square&logo=homeassistant" alt="Home Assistant">
 </p>
@@ -65,51 +65,87 @@
 
 ## 快速开始
 
-### 环境要求
+本项目仅提供 Docker 部署方式，其他平台未打包和测试。
+
+### 前置要求
 
 | 依赖 | 版本 |
 |------|------|
-| Android | 8.0+ |
-| Python (后端) | 3.9+ |
-| Home Assistant (可选) | 2024.1+ |
+| Docker | 20.10+ |
+| Docker Compose | 2.0+ |
 
-### 安装
+### 部署
 
 ```bash
 # 克隆仓库
 git clone https://github.com/your-org/baby-tracker.git
 cd baby-tracker
 
-# 安装后端依赖
-pip install -r requirements.txt
-
-# 启动服务
-python app.py
+# 一键启动
+docker compose up -d
 ```
 
-APK 安装包请前往 [Releases](https://github.com/your-org/baby-tracker/releases) 下载。
+服务默认映射到宿主机 **8964** 端口，访问 `http://localhost:8964` 即可使用。数据持久化在 `./data` 目录。
+
+### docker-compose.yml
+
+```yaml
+version: '3.8'
+services:
+  baby-tracker:
+    build: .
+    ports:
+      - "8964:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=production
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+```
 
 ---
 
 ## Home Assistant 配置
 
-在 `configuration.yaml` 中添加 REST 传感器：
+在 `configuration.yaml` 中添加 REST 传感器，将 `<your-server>` 替换为 Docker 宿主机的 IP（如 `192.168.1.100:8964`）：
 
 ```yaml
 sensor:
   - platform: rest
     name: "宝宝今日奶量"
-    resource: "http://<your-server>:5000/api/baby/daily/milk"
+    resource: "http://<your-server>:8964/api/baby/daily/milk"
     value_template: "{{ value_json.total_ml }}"
     unit_of_measurement: "ml"
     scan_interval: 300
 
   - platform: rest
     name: "宝宝今日排便"
-    resource: "http://<your-server>:5000/api/baby/daily/diaper"
+    resource: "http://<your-server>:8964/api/baby/daily/diaper"
     value_template: "{{ value_json.count }}"
     unit_of_measurement: "次"
     scan_interval: 300
+```
+
+---
+
+## Docker 构建
+
+如需构建自定义镜像，项目根目录已包含 `Dockerfile`：
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]
 ```
 
 ---
@@ -118,13 +154,14 @@ sensor:
 
 ```
 baby-tracker/
-├── app/                    # Android 客户端
-├── backend/
-│   ├── api/                # REST API 路由
-│   ├── models/             # 数据模型
-│   └── utils/              # 工具函数
+├── app.py                  # Flask 主程序
+├── requirements.txt        # Python 依赖
+├── Dockerfile              # Docker 镜像构建
+├── docker-compose.yml      # Docker Compose 编排
+├── data/                   # 持久化数据（SQLite）
 ├── screenshots/            # 应用截图
-├── requirements.txt
+├── static/                 # 前端静态资源
+├── templates/              # Jinja2 模板
 └── README.md
 ```
 
