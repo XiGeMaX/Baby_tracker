@@ -44,11 +44,18 @@ body { -webkit-font-smoothing: antialiased; }
     }
 }
 
-/* PWA 安全区域适配 */
-@supports (padding: env(safe-area-inset-bottom)) {
-    body { padding-bottom: env(safe-area-inset-bottom); }
+/* PWA 安全区域适配（iOS 刘海/灵动岛 + 底部横条） */
+@supports (padding: env(safe-area-inset-top)) {
+    body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
     #fab-btn { bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
     #fab-menu { bottom: calc(5rem + env(safe-area-inset-bottom)); }
+    /* 顶部标题栏避开刘海 */
+    main { padding-top: calc(1.5rem + env(safe-area-inset-top)); }
 }
 
 /* ── Navigation ──────────────────────────────────────── */

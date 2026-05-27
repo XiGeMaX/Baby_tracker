@@ -1289,7 +1289,7 @@ def ha_button_press(btn_id):
 
 @app.route('/static/icons/icon-<size>.png')
 def pwa_icon(size):
-    """动态生成 PWA 图标"""
+    """动态生成 PWA 图标 - 无边框全出血设计"""
     try:
         size = int(size)
     except ValueError:
@@ -1298,43 +1298,39 @@ def pwa_icon(size):
 
     from PIL import Image, ImageDraw
 
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    # 无边框：背景直接填满，无 margin
+    bg_color = (0, 229, 160, 255)  # accent color #00e5a0
+    img = Image.new('RGBA', (size, size), bg_color)
     draw = ImageDraw.Draw(img)
 
-    # 圆角矩形背景
-    radius = size // 5
-    margin = size // 20
-    bg_color = (0, 229, 160, 255)  # accent color #00e5a0
-    draw.rounded_rectangle([margin, margin, size - margin, size - margin],
-                           radius=radius, fill=bg_color)
-
-    # 奶瓶图标 - 简化版
-    cx, cy = size // 2, size // 2
+    # 奶瓶图标 - 居中偏上
+    cx = size // 2
+    cy = int(size * 0.48)
     unit = size / 100
 
     # 瓶身
-    bottle_left = cx - 15 * unit
-    bottle_right = cx + 15 * unit
-    bottle_top = cy - 25 * unit
-    bottle_bottom = cy + 20 * unit
+    bottle_left = cx - 16 * unit
+    bottle_right = cx + 16 * unit
+    bottle_top = cy - 22 * unit
+    bottle_bottom = cy + 24 * unit
     neck_left = cx - 8 * unit
     neck_right = cx + 8 * unit
-    neck_top = cy - 35 * unit
+    neck_top = cy - 32 * unit
 
     # 瓶颈
     draw.rectangle([neck_left, neck_top, neck_right, bottle_top], fill='white')
     # 瓶身
     draw.rounded_rectangle([bottle_left, bottle_top, bottle_right, bottle_bottom],
-                           radius=5 * unit, fill='white')
+                           radius=6 * unit, fill='white')
     # 奶嘴
-    nipple_top = cy - 40 * unit
-    draw.ellipse([cx - 5 * unit, nipple_top, cx + 5 * unit, neck_top + 3 * unit],
+    nipple_top = cy - 38 * unit
+    draw.ellipse([cx - 6 * unit, nipple_top, cx + 6 * unit, neck_top + 3 * unit],
                  fill='white')
     # 液面
-    liquid_top = cy - 5 * unit
+    liquid_top = cy - 2 * unit
     draw.rounded_rectangle([bottle_left + 3 * unit, liquid_top,
                             bottle_right - 3 * unit, bottle_bottom - 3 * unit],
-                           radius=3 * unit, fill=(0, 229, 160, 180))
+                           radius=4 * unit, fill=(0, 180, 120, 200))
 
     buf = BytesIO()
     img.save(buf, format='PNG')
