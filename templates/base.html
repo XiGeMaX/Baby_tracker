@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!-- PWA -->
+    <meta name="theme-color" content="#00e5a0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Baby Tracker">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+    <link rel="icon" type="image/png" href="/static/icons/icon-192.png">
+    <title>{% block title %}Baby Tracker{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        base: 'var(--c-base)',
+                        surface: 'var(--c-surface)',
+                        border: 'var(--c-border)',
+                        accent: 'var(--c-accent)',
+                        'accent-dim': 'var(--c-accent-dim)',
+                        'text-primary': 'var(--c-text-primary)',
+                        'text-secondary': 'var(--c-text-secondary)',
+                        'text-muted': 'var(--c-text-muted)',
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Consolas', 'monospace'],
+                        sans: ['Noto Sans SC', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script>
+        // 主题初始化（在渲染前执行，避免闪烁）
+        (function() {
+            const saved = localStorage.getItem('theme');
+            if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+        })();
+    </script>
+</head>
+<body class="bg-base text-text-primary font-sans min-h-screen md:pb-0 md:pl-20">
+
+    <!-- 桌面端侧边导航 -->
+    <nav class="hidden md:flex fixed left-0 top-0 h-full w-20 bg-surface border-r border-border flex-col items-center py-6 z-50">
+        <div class="mb-8">
+            <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                <i data-lucide="baby" class="w-5 h-5 text-accent"></i>
+            </div>
+        </div>
+        <div class="flex flex-col gap-2 flex-1">
+            <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}" title="仪表盘">
+                <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+            </a>
+            <a href="/trends" class="nav-item {% if active_page == 'trends' %}active{% endif %}" title="统计趋势">
+                <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+            </a>
+            <a href="/history" class="nav-item {% if active_page == 'history' %}active{% endif %}" title="历史记录">
+                <i data-lucide="calendar-days" class="w-5 h-5"></i>
+            </a>
+            {% if current_user and current_user.role == 'admin' %}
+            <a href="/admin" class="nav-item {% if active_page == 'admin' %}active{% endif %}" title="管理">
+                <i data-lucide="settings" class="w-5 h-5"></i>
+            </a>
+            {% endif %}
+        </div>
+        <!-- 底部用户区域 -->
+        <div class="flex flex-col items-center gap-2">
+            <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+                <i data-lucide="sun" class="w-4 h-4 theme-icon-sun hidden"></i>
+                <i data-lucide="moon" class="w-4 h-4 theme-icon-moon"></i>
+            </button>
+            <div id="user-avatar-desktop" class="w-9 h-9 rounded-full bg-accent/10 flex items-center justify-center text-accent text-xs font-bold cursor-pointer" onclick="showNicknameModal()" title="修改昵称">
+                {% if current_user %}{{ current_user.nickname[:1] or current_user.username[:1] }}{% endif %}
+            </div>
+            {% if current_user %}
+            <button onclick="doLogout()" class="text-text-muted hover:text-red-400 transition-colors" title="退出">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
+            </button>
+            {% else %}
+            <a href="/login" class="text-text-muted hover:text-accent transition-colors" title="登录">
+                <i data-lucide="log-in" class="w-4 h-4"></i>
+            </a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <!-- 移动端悬浮导航 -->
+    <div class="md:hidden">
+        <!-- 遮罩层 -->
+        <div id="fab-overlay" class="fixed inset-0 bg-black/40 z-[55] opacity-0 pointer-events-none transition-opacity duration-300" onclick="fabClose()"></div>
+
+        <!-- 展开菜单 -->
+        <div id="fab-menu" class="fixed bottom-20 right-4 z-[56] flex flex-col-reverse gap-2 items-end pointer-events-none">
+            <a href="/" class="fab-item {% if active_page == 'dashboard' %}active{% endif %}" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+                <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                <span>首页</span>
+            </a>
+            <a href="/trends" class="fab-item {% if active_page == 'trends' %}active{% endif %}" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+                <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+                <span>趋势</span>
+            </a>
+            <a href="/history" class="fab-item {% if active_page == 'history' %}active{% endif %}" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+                <i data-lucide="calendar-days" class="w-5 h-5"></i>
+                <span>历史</span>
+            </a>
+            {% if current_user and current_user.role == 'admin' %}
+            <a href="/admin" class="fab-item {% if active_page == 'admin' %}active{% endif %}" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+                <i data-lucide="settings" class="w-5 h-5"></i>
+                <span>管理</span>
+            </a>
+            {% endif %}
+            <a href="#" onclick="toggleTheme();return false" class="fab-item" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+                <i data-lucide="sun" class="w-5 h-5 theme-icon-sun hidden"></i>
+                <i data-lucide="moon" class="w-5 h-5 theme-icon-moon"></i>
+                <span class="theme-label-sun hidden">亮色</span>
+                <span class="theme-label-moon">暗色</span>
+            </a>
+            {% if current_user %}
+            <a href="#" onclick="doLogout();return false" class="fab-item" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+                <i data-lucide="log-out" class="w-5 h-5"></i>
+                <span>退出</span>
+            </a>
+            {% else %}
+            <a href="/login" class="fab-item" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+                <i data-lucide="log-in" class="w-5 h-5"></i>
+                <span>登录</span>
+            </a>
+            {% endif %}
+        </div>
+
+        <!-- 悬浮主按钮 -->
+        <button id="fab-btn" class="fixed bottom-5 right-4 z-[57] w-14 h-14 rounded-2xl bg-accent text-base flex items-center justify-center shadow-lg shadow-accent/20 active:scale-90 transition-transform duration-200" onclick="fabToggle()">
+            <i data-lucide="menu" class="w-6 h-6 fab-icon-menu transition-transform duration-300"></i>
+            <i data-lucide="x" class="w-6 h-6 fab-icon-close absolute transition-transform duration-300" style="transform: rotate(-90deg) scale(0); opacity: 0;"></i>
+        </button>
+    </div>
+
+    <!-- Toast 通知 -->
+    <div id="toast" class="fixed top-4 right-4 z-[100] hidden">
+        <div class="bg-accent/10 border border-accent/30 text-accent px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm flex items-center gap-2">
+            <i data-lucide="check-circle" class="w-4 h-4"></i>
+            <span id="toast-msg" class="text-sm font-medium"></span>
+        </div>
+    </div>
+
+    <!-- 昵称修改弹窗 -->
+    <div id="nickname-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
+        <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
+            <h3 class="text-sm font-medium text-text-secondary mb-3">修改昵称</h3>
+            <input type="text" id="nickname-input" class="input-field font-mono" placeholder="输入新昵称" maxlength="20">
+            <div class="flex gap-2 mt-4">
+                <button class="btn-secondary flex-1 text-sm" onclick="closeNicknameModal()">取消</button>
+                <button class="btn-primary flex-1 text-sm" onclick="saveNickname()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容 -->
+    <main class="max-w-4xl mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="/static/js/app.js"></script>
+    {% block scripts %}{% endblock %}
+    <script>
+        // ── 主题切换 ─────────────────────────────────────
+        function toggleTheme() {
+            const html = document.documentElement;
+            const isLight = html.getAttribute('data-theme') === 'light';
+            if (isLight) {
+                html.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                html.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+            }
+            updateThemeIcons();
+            // 关闭FAB
+            if (typeof fabClose === 'function') fabClose();
+        }
+
+        function updateThemeIcons() {
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            document.querySelectorAll('.theme-icon-sun').forEach(el => el.classList.toggle('hidden', !isLight));
+            document.querySelectorAll('.theme-icon-moon').forEach(el => el.classList.toggle('hidden', isLight));
+            document.querySelectorAll('.theme-label-sun').forEach(el => el.classList.toggle('hidden', !isLight));
+            document.querySelectorAll('.theme-label-moon').forEach(el => el.classList.toggle('hidden', isLight));
+        }
+
+        // 初始化图标状态
+        updateThemeIcons();
+
+        // 登出
+        async function doLogout() {
+            await api('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+        // 昵称弹窗
+        function showNicknameModal() {
+            const m = document.getElementById('nickname-modal');
+            m.classList.remove('hidden');
+            m.classList.add('flex');
+            if (typeof fabClose === 'function') fabClose();
+            document.getElementById('nickname-input').focus();
+        }
+        function closeNicknameModal() {
+            const m = document.getElementById('nickname-modal');
+            m.classList.add('hidden');
+            m.classList.remove('flex');
+        }
+        async function saveNickname() {
+            const nickname = document.getElementById('nickname-input').value.trim();
+            if (!nickname) return;
+            try {
+                await api('/api/auth/nickname', { method: 'PUT', body: JSON.stringify({ nickname }) });
+                showToast('昵称已更新');
+                closeNicknameModal();
+                setTimeout(() => location.reload(), 500);
+            } catch (e) {
+                showToast(e.message);
+            }
+        }
+
+        // ── FAB 悬浮导航 ──────────────────────────────
+        let fabOpen = false;
+
+        function fabToggle() {
+            // 有弹窗打开时不响应FAB
+            const editModal = document.getElementById('edit-modal');
+            const confirmModal = document.getElementById('confirm-modal');
+            if ((editModal && !editModal.classList.contains('hidden')) ||
+                (confirmModal && !confirmModal.classList.contains('hidden'))) return;
+            fabOpen ? fabClose() : fabOpen_action();
+        }
+
+        function fabOpen_action() {
+            fabOpen = true;
+            const overlay = document.getElementById('fab-overlay');
+            const menu = document.getElementById('fab-menu');
+            const btn = document.getElementById('fab-btn');
+            const items = document.querySelectorAll('.fab-item');
+            const menuIcon = btn.querySelector('.fab-icon-menu');
+            const closeIcon = btn.querySelector('.fab-icon-close');
+
+            // 遮罩淡入
+            overlay.classList.remove('opacity-0', 'pointer-events-none');
+            overlay.classList.add('opacity-100', 'pointer-events-auto');
+
+            // 菜单容器可交互
+            menu.style.pointerEvents = 'auto';
+
+            // 按钮图标切换
+            menuIcon.style.transform = 'rotate(90deg) scale(0)';
+            menuIcon.style.opacity = '0';
+            closeIcon.style.transform = 'rotate(0deg) scale(1)';
+            closeIcon.style.opacity = '1';
+
+            // 菜单项逐个弹出
+            items.forEach((item, i) => {
+                setTimeout(() => {
+                    item.style.transform = 'translateY(0) scale(1)';
+                    item.style.opacity = '1';
+                    item.style.pointerEvents = 'auto';
+                }, i * 50);
+            });
+        }
+
+        function fabClose() {
+            fabOpen = false;
+            const overlay = document.getElementById('fab-overlay');
+            const menu = document.getElementById('fab-menu');
+            const btn = document.getElementById('fab-btn');
+            const items = document.querySelectorAll('.fab-item');
+            const menuIcon = btn.querySelector('.fab-icon-menu');
+            const closeIcon = btn.querySelector('.fab-icon-close');
+
+            // 遮罩淡出
+            overlay.classList.add('opacity-0', 'pointer-events-none');
+            overlay.classList.remove('opacity-100', 'pointer-events-auto');
+
+            // 菜单容器不可交互
+            menu.style.pointerEvents = 'none';
+
+            // 按钮图标切换
+            menuIcon.style.transform = 'rotate(0deg) scale(1)';
+            menuIcon.style.opacity = '1';
+            closeIcon.style.transform = 'rotate(-90deg) scale(0)';
+            closeIcon.style.opacity = '0';
+
+            // 菜单项逐个收回
+            const total = items.length;
+            items.forEach((item, i) => {
+                setTimeout(() => {
+                    item.style.transform = 'translateY(16px) scale(0.5)';
+                    item.style.opacity = '0';
+                    item.style.pointerEvents = 'none';
+                }, (total - 1 - i) * 30);
+            });
+        }
+    </script>
+    <script>lucide.createIcons();</script>
+    <!-- Service Worker 注册 -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>

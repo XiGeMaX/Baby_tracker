@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% set active_page = 'admin' %}
+{% block title %}管理 - Baby Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-6 fade-in">
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">管理</h1>
+        <a href="/" class="text-text-muted hover:text-text-secondary transition-colors text-sm flex items-center gap-1">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            返回
+        </a>
+    </div>
+
+    <!-- 用户审批 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="users" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">用户管理</h2>
+            <span class="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30" id="pending-badge" style="display:none">待审批</span>
+        </div>
+        <div id="users-list" class="space-y-2">
+            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+        </div>
+    </div>
+
+    <!-- 快速记录按钮配置 -->
+    <div class="card space-y-4">
+        <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2">
+                <i data-lucide="zap" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary">快速记录按钮</h2>
+            </div>
+            <button class="btn-primary text-xs px-3 py-1.5" onclick="showAddButtonModal()">添加按钮</button>
+        </div>
+        <div id="buttons-list" class="space-y-2">
+            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+        </div>
+    </div>
+
+    <!-- 婴儿信息 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="baby" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">婴儿信息</h2>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">姓名</label>
+                <input type="text" id="baby-name" class="input-field" placeholder="宝宝姓名">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">性别</label>
+                <select id="baby-gender" class="input-field">
+                    <option value="male">男</option>
+                    <option value="female">女</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">出生日期</label>
+                <input type="date" id="baby-birth" class="input-field font-mono">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">体重 (kg)</label>
+                <input type="number" id="baby-weight" class="input-field font-mono" step="0.1" min="0.5" max="10" placeholder="3.0">
+            </div>
+        </div>
+        <button class="btn-primary text-sm" onclick="saveBaby()">保存信息</button>
+    </div>
+
+    <!-- 奶量设置 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="flask-round" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">奶量设置</h2>
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">每日目标奶量</label>
+            <div class="flex items-center gap-3">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="milk-mode" value="auto" checked class="accent-accent" onchange="toggleMilkMode()">
+                    <span class="text-sm text-text-secondary">自动估算</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="milk-mode" value="custom" class="accent-accent" onchange="toggleMilkMode()">
+                    <span class="text-sm text-text-secondary">自定义</span>
+                </label>
+            </div>
+            <div id="custom-milk-input" class="mt-2 hidden">
+                <input type="number" id="custom-target" class="input-field font-mono" placeholder="每日目标 ml" min="100" max="2000">
+            </div>
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">每日预估喂养次数</label>
+            <input type="number" id="feeds-per-day" class="input-field font-mono" min="4" max="16" value="8">
+        </div>
+        <div class="bg-base rounded-lg p-3 border border-border">
+            <p class="text-xs text-text-muted mb-1">当前估算</p>
+            <p class="font-mono text-sm text-accent" id="estimate-text">加载中...</p>
+        </div>
+        <button class="btn-primary text-sm" onclick="saveSettings()">保存设置</button>
+
+        <!-- 估算系数配置 -->
+        <div class="mt-2">
+            <div class="flex items-center justify-between mb-2">
+                <label class="text-text-muted text-xs">估算系数 (ml/kg/天)</label>
+                <button class="text-xs text-text-muted hover:text-accent transition-colors" onclick="resetCoeffs()">恢复默认</button>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-2" id="coeff-fields">
+                <!-- JS 动态填充 -->
+            </div>
+            <p class="text-text-muted text-[10px] mt-2">修改系数后点击「保存设置」生效。日龄期按体重×系数计算，月龄期按基础量递减计算。</p>
+        </div>
+    </div>
+
+    <!-- 数据管理 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="database" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">数据管理</h2>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-text-primary" id="stat-records">0</p>
+                <p class="text-text-muted text-xs">总记录</p>
+            </div>
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-text-primary" id="stat-feeds">0</p>
+                <p class="text-text-muted text-xs">喂养</p>
+            </div>
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-text-primary" id="stat-ml">0</p>
+                <p class="text-text-muted text-xs">总奶量</p>
+            </div>
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-text-primary" id="stat-days">0</p>
+                <p class="text-text-muted text-xs">天数</p>
+            </div>
+            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                <p class="counter-value text-lg text-amber-400" id="stat-pending">0</p>
+                <p class="text-text-muted text-xs">待审批</p>
+            </div>
+        </div>
+        <div class="flex gap-3">
+            <button class="btn-secondary text-sm flex items-center gap-2" onclick="exportCSV()">
+                <i data-lucide="download" class="w-4 h-4"></i> 导出 CSV
+            </button>
+            <button class="btn-danger text-sm flex items-center gap-2" onclick="clearData()">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> 清除记录
+            </button>
+        </div>
+    </div>
+
+    <!-- 操作日志 -->
+    <div class="card space-y-4">
+        <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2">
+                <i data-lucide="scroll-text" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary">操作日志</h2>
+            </div>
+            <button class="text-xs text-text-muted hover:text-accent transition-colors" onclick="loadLogs()">刷新</button>
+        </div>
+        <div id="audit-logs" class="space-y-1 max-h-96 overflow-y-auto">
+            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+        </div>
+    </div>
+
+    <!-- HA 接口 -->
+    <div class="card space-y-3">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="home" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">Home Assistant 接口</h2>
+        </div>
+        <div class="bg-base rounded-lg p-3 border border-border font-mono text-xs text-text-secondary space-y-1 overflow-x-auto">
+            <p class="text-text-muted"># 今日奶量</p>
+            <p>GET http://&lt;IP&gt;:8964/api/ha/status</p>
+            <p class="text-text-muted mt-1"># 今日喂养</p>
+            <p>GET http://&lt;IP&gt;:8964/api/ha/feed-today</p>
+            <p class="text-text-muted mt-1"># 上次喂养</p>
+            <p>GET http://&lt;IP&gt;:8964/api/ha/last-feed</p>
+            <p class="text-text-muted mt-1"># 今日排泄</p>
+            <p>GET http://&lt;IP&gt;:8964/api/ha/excrete-today</p>
+        </div>
+    </div>
+</div>
+
+<!-- 添加按钮弹窗 -->
+<div id="add-btn-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
+    <div class="bg-surface border border-border rounded-xl p-6 w-96 max-w-[90vw]">
+        <h3 class="text-sm font-medium text-text-secondary mb-4">添加快速记录按钮</h3>
+        <div class="space-y-3">
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">类型</label>
+                <select id="new-btn-type" class="input-field" onchange="updateSubTypes()">
+                    <option value="feed">喂养</option>
+                    <option value="excrete">排泄</option>
+                    <option value="symptom">症状</option>
+                </select>
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">子类型</label>
+                <select id="new-btn-subtype" class="input-field"></select>
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">显示标签</label>
+                <input type="text" id="new-btn-label" class="input-field" placeholder="如：配方奶 90ml">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">预设量 (ml，0=不预设)</label>
+                <input type="number" id="new-btn-amount" class="input-field font-mono" value="0" min="0">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">排序</label>
+                <input type="number" id="new-btn-order" class="input-field font-mono" value="0" min="0">
+            </div>
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn-secondary flex-1 text-sm" onclick="closeAddButtonModal()">取消</button>
+            <button class="btn-primary flex-1 text-sm" onclick="addButton()">添加</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin.js"></script>
+{% endblock %}

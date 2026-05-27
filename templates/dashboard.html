@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% set active_page = 'dashboard' %}
+{% block title %}仪表盘 - Baby Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-5 fade-in">
+    <!-- 页头 -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-xl font-semibold">今日概览</h1>
+            <p class="text-text-muted text-sm mt-0.5 font-mono" id="today-date"></p>
+        </div>
+        <div class="flex items-center gap-2">
+            <button id="refresh-btn" class="w-9 h-9 rounded-lg border border-border bg-surface flex items-center justify-center text-text-muted hover:text-accent hover:border-accent/30 active:scale-90 transition-all duration-150" onclick="manualRefresh()" title="刷新数据">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            </button>
+            {% if not current_user %}
+            <a href="/login" class="btn-primary flex items-center gap-2 text-sm">
+                <i data-lucide="log-in" class="w-4 h-4"></i>
+                登录
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 未登录提示 -->
+    {% if not current_user %}
+    <div class="card text-center py-4">
+        <p class="text-text-muted text-sm">登录后可快速记录喂养、排泄、症状</p>
+        <a href="/login" class="text-accent text-sm hover:underline mt-1 inline-block">立即登录</a>
+    </div>
+    {% endif %}
+
+    <!-- 奶量进度 + 喂养次数 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card flex items-center gap-5">
+            <div class="relative flex-shrink-0">
+                <svg width="110" height="110" id="milk-ring">
+                    <circle cx="55" cy="55" r="46" fill="none" class="ring-bg" stroke-width="6"/>
+                    <circle cx="55" cy="55" r="46" fill="none"
+                            class="progress-ring-circle ring-fill" stroke-width="6" stroke-linecap="round"
+                            stroke-dasharray="289.03" stroke-dashoffset="289.03"/>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <span class="counter-value text-2xl text-accent" id="milk-consumed">0</span>
+                    <span class="text-text-muted text-xs">ml</span>
+                </div>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-text-secondary text-sm mb-1">今日奶量</p>
+                <p class="text-text-muted text-xs mb-2">目标 <span class="font-mono text-text-secondary" id="milk-target">0</span> ml</p>
+                <div class="flex items-center gap-2 text-xs">
+                    <span class="text-text-muted">剩余</span>
+                    <span class="font-mono text-text-secondary" id="milk-remaining">0</span>
+                    <span class="text-text-muted">ml</span>
+                </div>
+                <p class="text-text-muted text-xs mt-2" id="estimate-detail"></p>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="flex items-center justify-between mb-3">
+                <p class="text-text-secondary text-sm">喂养次数</p>
+                <span class="font-mono text-xs text-text-muted"><span id="feed-count">0</span> / <span id="feed-total">8</span></span>
+            </div>
+            <div class="w-full h-2.5 bg-base rounded-full overflow-hidden mb-3">
+                <div class="progress-bar-fill h-full bg-accent rounded-full" id="feed-progress-bar" style="width: 0%"></div>
+            </div>
+            <div class="grid grid-cols-3 gap-3 text-center">
+                <div>
+                    <p class="counter-value text-lg text-text-primary" id="feeds-left">0</p>
+                    <p class="text-text-muted text-xs">剩余次数</p>
+                </div>
+                <div>
+                    <p class="counter-value text-lg text-blue-400" id="urine-count">0</p>
+                    <p class="text-text-muted text-xs">排尿</p>
+                </div>
+                <div>
+                    <p class="counter-value text-lg text-amber-400" id="stool-count">0</p>
+                    <p class="text-text-muted text-xs">排便</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上次喂养 -->
+    <div class="card flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="clock" class="w-4 h-4 text-blue-400"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+            <p class="text-text-secondary text-sm">上次喂养</p>
+            <p class="font-mono text-sm text-text-primary" id="last-feed-time">暂无记录</p>
+        </div>
+    </div>
+
+    <!-- 快速记录按钮（仅登录用户可见） -->
+    {% if current_user and current_user.status == 'approved' %}
+    <div>
+        <h2 class="text-sm font-medium text-text-secondary mb-3">快速记录</h2>
+        <div id="quick-buttons" class="grid grid-cols-3 md:grid-cols-4 gap-2">
+            <p class="text-text-muted text-sm col-span-full text-center py-4">加载中...</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 最近记录 -->
+    <div>
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-medium text-text-secondary">最近记录</h2>
+            <a href="/history" class="text-xs text-text-muted hover:text-accent transition-colors">查看全部</a>
+        </div>
+        <div class="space-y-2" id="recent-records">
+            <div class="card text-center text-text-muted text-sm py-8">
+                <p>暂无记录</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/dashboard.js"></script>
+{% endblock %}

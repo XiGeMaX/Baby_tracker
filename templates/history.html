@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% set active_page = 'history' %}
+{% block title %}历史记录 - Baby Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-5 fade-in">
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">历史记录</h1>
+        <a href="/" class="text-text-muted hover:text-text-secondary transition-colors text-sm flex items-center gap-1">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            返回
+        </a>
+    </div>
+
+    <!-- 日历 -->
+    <div class="card">
+        <div class="flex items-center justify-between mb-3">
+            <button class="text-text-muted hover:text-text-secondary transition-colors p-1" onclick="changeMonth(-1)">
+                <i data-lucide="chevron-left" class="w-5 h-5"></i>
+            </button>
+            <span class="font-mono text-sm text-text-secondary" id="cal-month-label"></span>
+            <button class="text-text-muted hover:text-text-secondary transition-colors p-1" onclick="changeMonth(1)">
+                <i data-lucide="chevron-right" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="grid grid-cols-7 gap-1 text-center mb-2">
+            <span class="text-xs text-text-muted">一</span>
+            <span class="text-xs text-text-muted">二</span>
+            <span class="text-xs text-text-muted">三</span>
+            <span class="text-xs text-text-muted">四</span>
+            <span class="text-xs text-text-muted">五</span>
+            <span class="text-xs text-text-muted">六</span>
+            <span class="text-xs text-text-muted">日</span>
+        </div>
+        <div class="grid grid-cols-7 gap-1" id="cal-grid"></div>
+    </div>
+
+    <!-- 筛选 -->
+    <div class="flex gap-2">
+        <button class="tab-btn active" data-filter="all" onclick="filterRecords('all', this)">全部</button>
+        <button class="tab-btn" data-filter="feed" onclick="filterRecords('feed', this)">喂养</button>
+        <button class="tab-btn" data-filter="excrete" onclick="filterRecords('excrete', this)">排泄</button>
+        <button class="tab-btn" data-filter="symptom" onclick="filterRecords('symptom', this)">症状</button>
+    </div>
+
+    <!-- 记录列表 -->
+    <div id="records-list" class="space-y-2">
+        <div class="card text-center text-text-muted text-sm py-8">选择日期查看记录</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/history.js"></script>
+{% endblock %}

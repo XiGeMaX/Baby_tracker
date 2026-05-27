@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% set active_page = 'register' %}
+{% block title %}注册 - Baby Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-sm mx-auto mt-16 fade-in">
+    <div class="text-center mb-8">
+        <div class="w-14 h-14 rounded-xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="baby" class="w-7 h-7 text-accent"></i>
+        </div>
+        <h1 class="text-xl font-semibold">注册账号</h1>
+        <p class="text-text-muted text-sm mt-1">注册后需管理员审批</p>
+    </div>
+
+    <div class="card space-y-4">
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">用户名</label>
+            <input type="text" id="reg-username" class="input-field font-mono" placeholder="至少3个字符" autocomplete="username">
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">昵称</label>
+            <input type="text" id="reg-nickname" class="input-field" placeholder="显示名称（可选）">
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">密码</label>
+            <input type="password" id="reg-password" class="input-field font-mono" placeholder="至少6个字符" autocomplete="new-password">
+        </div>
+        <div id="reg-error" class="text-red-400 text-xs hidden"></div>
+        <button class="btn-primary w-full py-3 text-base" onclick="doRegister()">注册</button>
+    </div>
+
+    <div class="text-center mt-4">
+        <p class="text-text-muted text-sm">已有账号？<a href="/login" class="text-accent hover:underline">登录</a></p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function doRegister() {
+    const username = document.getElementById('reg-username').value.trim();
+    const nickname = document.getElementById('reg-nickname').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const errEl = document.getElementById('reg-error');
+    errEl.classList.add('hidden');
+
+    if (!username || !password) {
+        errEl.textContent = '请填写用户名和密码';
+        errEl.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        await api('/api/auth/register', {
+            method: 'POST',
+            body: JSON.stringify({ username, password, nickname: nickname || username })
+        });
+        showToast('注册成功，请等待管理员审批');
+        setTimeout(() => window.location.href = '/login', 1500);
+    } catch (e) {
+        errEl.textContent = e.message;
+        errEl.classList.remove('hidden');
+    }
+}
+
+document.getElementById('reg-password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doRegister();
+});
+</script>
+{% endblock %}

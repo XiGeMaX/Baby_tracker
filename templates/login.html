@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% set active_page = 'login' %}
+{% block title %}登录 - Baby Tracker{% endblock %}
+
+{% block content %}
+<div class="max-w-sm mx-auto mt-16 fade-in">
+    <div class="text-center mb-8">
+        <div class="w-14 h-14 rounded-xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="baby" class="w-7 h-7 text-accent"></i>
+        </div>
+        <h1 class="text-xl font-semibold">Baby Tracker</h1>
+        <p class="text-text-muted text-sm mt-1">新生儿出入量记录</p>
+    </div>
+
+    <div class="card space-y-4">
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">用户名</label>
+            <input type="text" id="login-username" class="input-field font-mono" placeholder="请输入用户名" autocomplete="username">
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">密码</label>
+            <input type="password" id="login-password" class="input-field font-mono" placeholder="请输入密码" autocomplete="current-password">
+        </div>
+        <div id="login-error" class="text-red-400 text-xs hidden"></div>
+        <button class="btn-primary w-full py-3 text-base" onclick="doLogin()">登录</button>
+    </div>
+
+    <div class="text-center mt-4">
+        <p class="text-text-muted text-sm">没有账号？<a href="/register" class="text-accent hover:underline">注册</a></p>
+    </div>
+
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function doLogin() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errEl = document.getElementById('login-error');
+    errEl.classList.add('hidden');
+
+    if (!username || !password) {
+        errEl.textContent = '请输入用户名和密码';
+        errEl.classList.remove('hidden');
+        return;
+    }
+
+    try {
+        const resp = await api('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ username, password })
+        });
+        showToast('登录成功');
+        setTimeout(() => window.location.href = '/', 500);
+    } catch (e) {
+        errEl.textContent = e.message;
+        errEl.classList.remove('hidden');
+    }
+}
+
+// 回车登录
+document.getElementById('login-password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+});
+</script>
+{% endblock %}
