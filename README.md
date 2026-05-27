@@ -93,7 +93,8 @@ docker compose up -d
 version: '3.8'
 services:
   baby-tracker:
-    build: .
+    container_name: baby_tracker
+    image: "ghcr.io/xigemax/baby_tracker:latest"
     ports:
       - "8964:5000"
     volumes:
