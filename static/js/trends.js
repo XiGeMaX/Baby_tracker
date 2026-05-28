@@ -161,6 +161,11 @@ function renderWeightChart() {
                 y: {
                     ...commonScaleOptions(colors, 'kg'),
                     beginAtZero: false,
+                    ticks: {
+                        color: colors.text,
+                        font: { family: "'JetBrains Mono', monospace", size: 10 },
+                        callback: function(value) { return value.toFixed(2) + 'kg'; }
+                    },
                 }
             }
         }
