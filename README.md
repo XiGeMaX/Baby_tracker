@@ -80,22 +80,6 @@
 
 ---
 
-## 快速部署
-
-### Docker Compose（推荐）
-
-```bash
-# 克隆仓库
-git clone https://github.com/your-username/baby-tracker.git
-cd baby-tracker
-
-# 启动
-docker compose up -d
-
-# 访问
-open http://localhost:8964
-```
-
 ### 首次使用
 
 1. 默认管理/密码:admin/admin123
