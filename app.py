@@ -139,6 +139,23 @@ def init_db():
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('custom_daily_target', '')")
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('feeds_per_day', '8')")
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('reminder_interval_min', '180')")
+    # 奶量估算系数（JSON格式，每个阶段: ml/kg/天）
+    default_coeffs = json_module.dumps({
+        'day0': 60,       # 出生当天固定值
+        'day1': 60,       # 日龄1天 ml/kg
+        'day2_3': 80,     # 日龄2-3天
+        'day4_7': 100,    # 日龄4-7天
+        'day8_14': 120,   # 日龄8-14天
+        'day15_28': 135,  # 日龄15-28天
+        'month1_3': 150,  # 1-3月龄
+        'month4_6': 150,  # 4-6月龄(上限900)
+        'month4_6_cap': 900,
+        'month6_12_base': 800,  # 6-12月基础量
+        'month6_12_decay': 30,  # 每月递减
+        'month6_12_min': 600,   # 下限
+        'year1_plus': 500,      # 1岁以上
+    }, ensure_ascii=False)
+    db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('milk_coefficients', ?)", (default_coeffs,))
 
     # 默认管理员
     admin_count = db.execute("SELECT COUNT(*) as c FROM users WHERE role='admin'").fetchone()['c']
@@ -231,18 +248,88 @@ def estimate_milk(baby, settings_dict):
     custom = settings_dict.get('custom_daily_target', '')
     feeds_per_day = int(settings_dict.get('feeds_per_day', '8'))
 
+    # 解析自定义系数
+    default_coeffs = {
+        'day0': 60, 'day1': 60, 'day2_3': 80, 'day4_7': 100,
+        'day8_14': 120, 'day15_28': 135, 'month1_3': 150,
+        'month4_6': 150, 'month4_6_cap': 900,
+        'month6_12_base': 800, 'month6_12_decay': 30, 'month6_12_min': 600,
+        'year1_plus': 500,
+    }
+    try:
+        user_coeffs = json_module.loads(settings_dict.get('milk_coefficients', '{}'))
+        default_coeffs.update(user_coeffs)
+    except (ValueError, TypeError):
+        pass
+    c = default_coeffs
+
     if custom and custom.strip():
         target = float(custom)
         method = 'custom'
         detail = f'自定义目标: {target:.0f}ml/天'
     elif baby and baby['weight'] and baby['weight'] > 0:
+        birth_str = baby['birth_date'] if baby['birth_date'] else ''
+        if birth_str:
+            birth = datetime.strptime(birth_str, '%Y-%m-%d').date()
+            age_days = (date.today() - birth).days
+        else:
+            age_days = 30
+
         weight = baby['weight']
-        gender = baby.get('gender', 'male') if isinstance(baby, dict) else baby['gender']
-        coeff = 180 if gender == 'male' else 150
-        target = weight * coeff
-        method = 'weight'
-        gender_label = '男' if gender == 'male' else '女'
-        detail = f'{gender_label}宝: {weight}kg × {coeff}ml/kg = {target:.0f}ml/天'
+
+        if age_days <= 0:
+            target = c['day0']
+            method = 'weight'
+            detail = f'出生首日: 固定 {target:.0f}ml/天'
+        elif age_days <= 1:
+            coeff = c['day1']
+            target = weight * coeff
+            method = 'weight'
+            detail = f'日龄1天: {weight}kg × {coeff}ml/kg = {target:.0f}ml/天'
+        elif age_days <= 3:
+            coeff = c['day2_3']
+            target = weight * coeff
+            method = 'weight'
+            detail = f'日龄{age_days}天: {weight}kg × {coeff}ml/kg = {target:.0f}ml/天'
+        elif age_days <= 7:
+            coeff = c['day4_7']
+            target = weight * coeff
+            method = 'weight'
+            detail = f'日龄{age_days}天: {weight}kg × {coeff}ml/kg = {target:.0f}ml/天'
+        elif age_days <= 14:
+            coeff = c['day8_14']
+            target = weight * coeff
+            method = 'weight'
+            detail = f'日龄{age_days}天: {weight}kg × {coeff}ml/kg = {target:.0f}ml/天'
+        elif age_days <= 28:
+            coeff = c['day15_28']
+            target = weight * coeff
+            method = 'weight'
+            detail = f'日龄{age_days}天: {weight}kg × {coeff}ml/kg = {target:.0f}ml/天'
+        elif age_days <= 90:
+            coeff = c['month1_3']
+            target = weight * coeff
+            method = 'weight'
+            detail = f'{age_days//30}月龄: {weight}kg × {coeff}ml/kg = {target:.0f}ml/天'
+        elif age_days <= 180:
+            coeff = c['month4_6']
+            cap = c['month4_6_cap']
+            target = min(weight * coeff, cap)
+            method = 'weight'
+            detail = f'{age_days//30}月龄: {weight}kg × {coeff}ml/kg = {target:.0f}ml/天(上限{cap}ml)'
+        elif age_days <= 365:
+            age_months = age_days // 30
+            base = c['month6_12_base']
+            decay = c['month6_12_decay']
+            floor = c['month6_12_min']
+            monthly_avg = max(floor, base - (age_months - 6) * decay)
+            target = monthly_avg
+            method = 'age_monthly'
+            detail = f'{age_months}月龄: 月均参考 {monthly_avg:.0f}ml/天'
+        else:
+            target = c['year1_plus']
+            method = 'age_monthly'
+            detail = f'1岁以上: 建议 {target:.0f}ml/天'
     else:
         target = 500
         method = 'default'
