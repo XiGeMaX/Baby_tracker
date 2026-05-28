@@ -84,6 +84,8 @@ body { -webkit-font-smoothing: antialiased; }
     text-decoration: none; white-space: nowrap;
     box-shadow: 0 4px 16px var(--c-shadow);
     pointer-events: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
     transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
                 opacity 0.25s ease-out,
                 background 0.15s ease,
@@ -98,6 +100,16 @@ body { -webkit-font-smoothing: antialiased; }
 }
 .fab-item:active {
     transform: scale(0.95) !important;
+}
+/* FAB 主按钮 */
+#fab-btn {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+/* FAB 遮罩层 */
+#fab-overlay {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 /* ── Cards ───────────────────────────────────────────── */
@@ -145,6 +157,14 @@ body { -webkit-font-smoothing: antialiased; }
 [data-theme="light"] .badge-symptom {
     background: rgba(220,38,38,0.1); color: #dc2626;
     border-color: rgba(220,38,38,0.25);
+}
+.badge-vaccine {
+    background: rgba(234,179,8,0.15); color: #eab308;
+    border-color: rgba(234,179,8,0.3);
+}
+[data-theme="light"] .badge-vaccine {
+    background: rgba(202,138,4,0.1); color: #ca8a04;
+    border-color: rgba(202,138,4,0.25);
 }
 
 /* ── Timeline ────────────────────────────────────────── */
@@ -254,21 +274,61 @@ body { -webkit-font-smoothing: antialiased; }
 }
 
 /* ── Calendar ────────────────────────────────────────── */
+.cal-wrap {
+    max-width: 400px;
+    margin: 0 auto;
+}
+.cal-header {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+}
+.cal-header span {
+    font-size: 12px; padding: 4px 0; color: var(--c-text-muted);
+}
+.cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
 .cal-day {
-    width: 36px; height: 36px; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px; cursor: pointer; transition: all 0.15s;
-    color: var(--c-text-primary);
+    aspect-ratio: 1; border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: clamp(11px, 3.5vw, 14px); cursor: pointer; transition: all 0.15s;
+    color: var(--c-text-primary); position: relative;
+    min-width: 0;
 }
 .cal-day:hover { background: var(--c-hover-overlay); }
 .cal-day.today { color: var(--c-accent); font-weight: 600; }
-.cal-day.has-record { position: relative; }
-.cal-day.has-record::after {
-    content: ''; position: absolute; bottom: 2px;
-    width: 4px; height: 4px; border-radius: 50%; background: var(--c-accent);
-}
 .cal-day.selected { background: color-mix(in srgb, var(--c-accent) 15%, transparent); color: var(--c-accent); }
 .cal-day.other-month { color: color-mix(in srgb, var(--c-text-muted) 40%, transparent); }
+.cal-dots {
+    display: flex; align-items: center; justify-content: center;
+    gap: 2px; height: 4px; margin-top: 1px;
+}
+.cal-dots span {
+    width: 4px; height: 4px; border-radius: 50%; display: block;
+}
+.cal-dot-feed { background: var(--c-accent); }
+.cal-dot-vaccine { background: #eab308; }
+.cal-dot-upcoming { background: #ef4444; }
+.cal-dot-overdue { background: #333; }
+@media (max-width: 360px) {
+    .cal-day { border-radius: 6px; }
+    .cal-dots span { width: 3px; height: 3px; }
+    .cal-dots { gap: 1px; }
+}
+@media (min-width: 768px) {
+    .cal-wrap { max-width: 100%; }
+    .cal-grid { gap: 3px; }
+    .cal-day {
+        aspect-ratio: auto; height: 36px; border-radius: 6px; font-size: 13px;
+    }
+    .cal-header span { font-size: 11px; }
+    .cal-dots span { width: 4px; height: 4px; }
+}
+@media (min-width: 1024px) {
+    .cal-day { height: 34px; font-size: 12px; border-radius: 5px; }
+    .cal-header span { font-size: 10px; }
+}
 
 /* ── Scrollbar ───────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }

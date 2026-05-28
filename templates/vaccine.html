@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% set active_page = 'vaccine' %}
+{% block title %}疫苗规划 - Baby Tracker{% endblock %}
+
+{% block content %}
+<div class="space-y-5 fade-in pb-20 md:pb-0">
+    <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">疫苗规划</h1>
+        <div class="flex items-center gap-2">
+            <span id="vaccine-age" class="text-xs text-text-muted font-mono"></span>
+            <button onclick="showAddVaccineModal()" class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors">+ 自定义</button>
+        </div>
+    </div>
+
+    <!-- 概览 -->
+    <div id="vaccine-overview" class="space-y-3"></div>
+
+    <!-- 疫苗计划列表 -->
+    <div class="card">
+        <div class="flex items-center gap-2 mb-3">
+            <i data-lucide="list-checks" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">接种计划</h2>
+            <span class="text-[10px] text-text-muted">(2024年版)</span>
+        </div>
+        <div id="vaccine-list" class="space-y-2"></div>
+    </div>
+</div>
+
+<!-- 计划日期修改弹窗 -->
+<div id="plan-date-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
+    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
+        <h3 id="plan-date-modal-title" class="text-sm font-medium text-text-secondary mb-3">修改计划日期</h3>
+        <input type="hidden" id="pdm-name">
+        <input type="hidden" id="pdm-dose">
+        <div class="space-y-3">
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <label class="text-text-muted text-xs">计划接种日期</label>
+                    <button class="text-[10px] text-accent hover:underline" onclick="savePlanDate()">修改接种日期</button>
+                </div>
+                <input type="date" id="pdm-date" class="input-field font-mono">
+            </div>
+        </div>
+        <div class="mt-4">
+            <button class="btn-primary w-full text-sm" onclick="planDateToRecord()">记录接种</button>
+        </div>
+        <div class="mt-2">
+            <button class="btn-secondary w-full text-sm" onclick="closePlanDateModal()">取消</button>
+        </div>
+    </div>
+</div>
+
+<!-- 接种记录弹窗 -->
+<div id="vaccine-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
+    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
+        <h3 id="vaccine-modal-title" class="text-sm font-medium text-text-secondary mb-3">记录接种</h3>
+        <input type="hidden" id="vm-name">
+        <input type="hidden" id="vm-dose">
+        <div class="space-y-3">
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">接种日期</label>
+                <input type="date" id="vm-date" class="input-field font-mono">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">备注</label>
+                <input type="text" id="vm-note" class="input-field" placeholder="可选">
+            </div>
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn-primary flex-1 text-sm" onclick="saveVaccineRecord()">记录接种</button>
+            <button class="btn-secondary flex-1 text-sm" onclick="closeVaccineModal()">取消</button>
+        </div>
+    </div>
+</div>
+
+<!-- 编辑疫苗记录弹窗 -->
+<div id="edit-vaccine-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
+    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
+        <h3 id="edit-vaccine-modal-title" class="text-sm font-medium text-text-secondary mb-3">编辑接种记录</h3>
+        <input type="hidden" id="evm-name">
+        <input type="hidden" id="evm-dose">
+        <div class="space-y-3">
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">接种日期</label>
+                <input type="date" id="evm-date" class="input-field font-mono">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">备注</label>
+                <input type="text" id="evm-note" class="input-field" placeholder="可选">
+            </div>
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="text-xs px-2 py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors" onclick="deleteVaccineFromEdit()">删除记录</button>
+            <div class="flex-1"></div>
+            <button class="btn-secondary text-sm" onclick="closeEditVaccineModal()">取消</button>
+            <button class="btn-primary text-sm" onclick="updateVaccineRecord()">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 自定义疫苗弹窗 -->
+<div id="add-vaccine-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
+    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
+        <h3 class="text-sm font-medium text-text-secondary mb-3">添加自定义疫苗</h3>
+        <div class="space-y-3">
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">疫苗名称</label>
+                <input type="text" id="av-name" class="input-field" placeholder="如：水痘疫苗">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">第几剂</label>
+                <input type="number" id="av-dose" class="input-field font-mono" value="1" min="1">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">接种日期</label>
+                <input type="date" id="av-date" class="input-field font-mono">
+            </div>
+            <div>
+                <label class="text-text-muted text-xs mb-1 block">备注</label>
+                <input type="text" id="av-note" class="input-field" placeholder="如：自费">
+            </div>
+        </div>
+        <div class="flex gap-2 mt-4">
+            <button class="btn-secondary flex-1 text-sm" onclick="closeAddVaccineModal()">取消</button>
+            <button class="btn-primary flex-1 text-sm" onclick="saveCustomVaccine()">确认</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vaccine.js"></script>
+{% endblock %}

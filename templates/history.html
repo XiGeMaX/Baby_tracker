@@ -23,16 +23,12 @@
                 <i data-lucide="chevron-right" class="w-5 h-5"></i>
             </button>
         </div>
-        <div class="grid grid-cols-7 gap-1 text-center mb-2">
-            <span class="text-xs text-text-muted">一</span>
-            <span class="text-xs text-text-muted">二</span>
-            <span class="text-xs text-text-muted">三</span>
-            <span class="text-xs text-text-muted">四</span>
-            <span class="text-xs text-text-muted">五</span>
-            <span class="text-xs text-text-muted">六</span>
-            <span class="text-xs text-text-muted">日</span>
+        <div class="cal-wrap">
+            <div class="cal-header mb-1">
+                <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+            </div>
+            <div class="cal-grid" id="cal-grid"></div>
         </div>
-        <div class="grid grid-cols-7 gap-1" id="cal-grid"></div>
     </div>
 
     <!-- 筛选 -->
@@ -41,6 +37,7 @@
         <button class="tab-btn" data-filter="feed" onclick="filterRecords('feed', this)">喂养</button>
         <button class="tab-btn" data-filter="excrete" onclick="filterRecords('excrete', this)">排泄</button>
         <button class="tab-btn" data-filter="symptom" onclick="filterRecords('symptom', this)">症状</button>
+        <button class="tab-btn" data-filter="vaccine" onclick="filterRecords('vaccine', this)">疫苗</button>
     </div>
 
     <!-- 记录列表 -->

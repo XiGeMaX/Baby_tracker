@@ -8,6 +8,8 @@ from flask import Flask, render_template, request, jsonify, g, send_file, sessio
 from io import StringIO, BytesIO
 from werkzeug.security import generate_password_hash, check_password_hash
 import csv
+import secrets
+import string
 
 app = Flask(__name__)
 app.config['DATABASE'] = os.path.join(os.path.dirname(__file__), 'data', 'baby.db')
@@ -116,6 +118,21 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_records_user_id ON records(user_id);
         CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
         CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+        CREATE TABLE IF NOT EXISTS vaccine_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vaccine_name TEXT NOT NULL,
+            dose_index INTEGER NOT NULL,
+            vaccinated_date TEXT NOT NULL,
+            note TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            UNIQUE(vaccine_name, dose_index)
+        );
+        CREATE TABLE IF NOT EXISTS vaccine_plan_overrides (
+            vaccine_name TEXT NOT NULL,
+            dose_index INTEGER NOT NULL,
+            custom_due_date TEXT NOT NULL,
+            UNIQUE(vaccine_name, dose_index)
+        );
     ''')
 
     # 默认设置
@@ -250,8 +267,8 @@ def estimate_milk(baby, settings_dict):
         target = float(custom)
         method = 'custom'
         detail = f'自定义目标: {target:.0f}ml/天'
-    elif baby and baby.get('weight') and baby['weight'] > 0:
-        birth_str = baby.get('birth_date', '')
+    elif baby and baby['weight'] and baby['weight'] > 0:
+        birth_str = baby['birth_date'] if baby['birth_date'] else ''
         if birth_str:
             birth = datetime.strptime(birth_str, '%Y-%m-%d').date()
             age_days = (date.today() - birth).days
@@ -611,7 +628,14 @@ def get_record(record_id):
 def get_records():
     db = get_db()
     rec_date = request.args.get('date', date.today().isoformat())
+    # 校验日期格式
+    try:
+        datetime.strptime(rec_date, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': '日期格式无效，需 YYYY-MM-DD'}), 400
     rec_type = request.args.get('type', None)
+    if rec_type and rec_type not in ('feed', 'excrete', 'symptom'):
+        return jsonify({'error': '无效的记录类型'}), 400
     start = f"{rec_date} 00:00:00"
     end = f"{rec_date} 23:59:59"
 
@@ -940,6 +964,29 @@ def reset_user_password(user_id):
     return jsonify({'message': '密码已重置'})
 
 
+@app.route('/api/users/<int:user_id>/username', methods=['PUT'])
+def update_username(user_id):
+    """管理员修改用户登录名"""
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+    data = request.get_json()
+    new_username = data.get('username', '').strip()
+    if not new_username or len(new_username) < 2:
+        return jsonify({'error': '用户名至少2个字符'}), 400
+    db = get_db()
+    user = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        return jsonify({'error': '用户不存在'}), 404
+    existing = db.execute("SELECT id FROM users WHERE username = ? AND id != ?", (new_username, user_id)).fetchone()
+    if existing:
+        return jsonify({'error': '用户名已存在'}), 409
+    old_username = user['username']
+    db.execute("UPDATE users SET username = ? WHERE id = ?", (new_username, user_id))
+    db.commit()
+    add_log('修改用户名', 'user', user_id, f"{old_username} → {new_username}")
+    return jsonify({'message': '用户名已更新', 'username': new_username})
+
+
 # ── API: Audit Logs ───────────────────────────────────────
 
 @app.route('/api/audit-logs', methods=['GET'])
@@ -965,16 +1012,124 @@ def export_csv():
     rows = db.execute("SELECT * FROM records ORDER BY timestamp DESC").fetchall()
     output = StringIO()
     writer = csv.writer(output)
+    # 中文列名 + 中文类型映射
+    type_map = {'feed': '喂养', 'excrete': '排泄', 'symptom': '症状'}
+    sub_map = {
+        'breast_left': '母乳(左)', 'breast_right': '母乳(右)', 'formula': '配方奶', 'water': '水',
+        'urine': '尿', 'stool': '便', 'both': '尿+便',
+        'vomit': '呕吐', 'fever': '发热', 'jaundice': '黄疸', 'rash': '皮疹', 'other': '其他',
+    }
     writer.writerow(['ID', '类型', '子类型', '量(ml)', '时长(分)', '颜色', '性状', '体温', '备注', '时间'])
     for r in rows:
-        writer.writerow([r['id'], r['type'], r['sub_type'], r['amount'], r['duration'],
-                         r['color'], r['consistency'], r['temperature'], r['note'], r['timestamp']])
+        writer.writerow([r['id'], type_map.get(r['type'], r['type']), sub_map.get(r['sub_type'], r['sub_type']),
+                         r['amount'], r['duration'], r['color'], r['consistency'], r['temperature'], r['note'], r['timestamp']])
     output.seek(0)
     buf = BytesIO()
     buf.write(output.getvalue().encode('utf-8-sig'))
     buf.seek(0)
     add_log('导出CSV', 'data', None, f'{len(rows)}条记录')
     return send_file(buf, mimetype='text/csv', as_attachment=True, download_name=f'baby_records_{date.today().isoformat()}.csv')
+
+
+@app.route('/api/backup/export', methods=['GET'])
+def backup_export():
+    """导出完整数据库备份（JSON格式）"""
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+    db = get_db()
+    backup = {
+        'version': 1,
+        'exported_at': datetime.now().isoformat(),
+        'tables': {}
+    }
+    # 导出所有数据表
+    table_cols = {
+        'babies': ['id', 'name', 'gender', 'birth_date', 'weight', 'created_at'],
+        'records': ['id', 'baby_id', 'user_id', 'type', 'sub_type', 'amount', 'duration', 'color', 'consistency', 'temperature', 'note', 'timestamp', 'created_at'],
+        'settings': ['id', 'key', 'value', 'updated_at'],
+        'users': ['id', 'username', 'password_hash', 'nickname', 'role', 'status', 'created_at'],
+        'quick_buttons': ['id', 'type', 'sub_type', 'label', 'amount', 'sort_order', 'is_active', 'created_at'],
+        'weight_logs': ['id', 'baby_id', 'weight', 'recorded_date', 'note', 'created_at'],
+        'vaccine_records': ['id', 'vaccine_name', 'dose_index', 'vaccinated_date', 'note', 'created_at'],
+        'vaccine_plan_overrides': ['vaccine_name', 'dose_index', 'custom_due_date'],
+    }
+    for table, cols in table_cols.items():
+        try:
+            rows = db.execute(f"SELECT {','.join(cols)} FROM {table}").fetchall()
+            backup['tables'][table] = {
+                'columns': cols,
+                'rows': [dict(zip(cols, row)) for row in rows]
+            }
+        except Exception:
+            backup['tables'][table] = {'columns': cols, 'rows': []}
+
+    buf = BytesIO()
+    buf.write(json_module.dumps(backup, ensure_ascii=False, indent=2).encode('utf-8'))
+    buf.seek(0)
+    add_log('导出备份', 'data', None, '完整数据库备份')
+    return send_file(buf, mimetype='application/json', as_attachment=True,
+                     download_name=f'baby_backup_{date.today().isoformat()}.json')
+
+
+@app.route('/api/backup/restore', methods=['POST'])
+def backup_restore():
+    """从JSON备份恢复数据"""
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+
+    # 检查是否有上传文件
+    if 'file' not in request.files:
+        return jsonify({'error': '请选择备份文件'}), 400
+
+    f = request.files['file']
+    if not f.filename:
+        return jsonify({'error': '文件为空'}), 400
+
+    try:
+        backup = json_module.loads(f.read().decode('utf-8'))
+    except Exception as e:
+        return jsonify({'error': f'文件解析失败: {str(e)}'}), 400
+
+    if 'version' not in backup or 'tables' not in backup:
+        return jsonify({'error': '无效的备份文件格式'}), 400
+
+    db = get_db()
+    restored_counts = {}
+
+    # 恢复顺序：先恢复无外键依赖的表
+    restore_order = ['babies', 'users', 'settings', 'quick_buttons', 'records', 'weight_logs', 'vaccine_records', 'vaccine_plan_overrides']
+
+    for table in restore_order:
+        if table not in backup['tables']:
+            continue
+        tdata = backup['tables'][table]
+        cols = tdata.get('columns', [])
+        rows = tdata.get('rows', [])
+        if not rows:
+            continue
+
+        # 清空表（按依赖顺序反序删除）
+        try:
+            db.execute(f"DELETE FROM {table}")
+        except Exception:
+            continue
+
+        # 插入数据
+        placeholders = ','.join(['?'] * len(cols))
+        col_str = ','.join(cols)
+        count = 0
+        for row in rows:
+            values = [row.get(c) for c in cols]
+            try:
+                db.execute(f"INSERT OR IGNORE INTO {table} ({col_str}) VALUES ({placeholders})", values)
+                count += 1
+            except Exception:
+                continue
+        restored_counts[table] = count
+
+    db.commit()
+    add_log('恢复备份', 'data', None, f'恢复: {json_module.dumps(restored_counts, ensure_ascii=False)}')
+    return jsonify({'message': '备份已恢复', 'counts': restored_counts})
 
 
 @app.route('/api/data/clear', methods=['POST'])
@@ -1047,7 +1202,28 @@ def delete_weight_log(log_id):
     db = get_db()
     db.execute("DELETE FROM weight_logs WHERE id = ?", (log_id,))
     db.commit()
+    add_log('删除体重', 'weight_log', log_id, '')
     return jsonify({'message': '已删除'})
+
+
+@app.route('/api/weight-logs/<int:log_id>', methods=['PUT'])
+def update_weight_log(log_id):
+    if not is_approved():
+        return jsonify({'error': '无权限'}), 403
+    data = request.get_json()
+    weight = data.get('weight')
+    recorded_date = data.get('recorded_date')
+    note = data.get('note', '')
+    if not weight or weight <= 0:
+        return jsonify({'error': '请输入有效体重'}), 400
+    if not recorded_date:
+        return jsonify({'error': '请选择日期'}), 400
+    db = get_db()
+    db.execute("UPDATE weight_logs SET weight=?, recorded_date=?, note=? WHERE id=?",
+               (weight, recorded_date, note, log_id))
+    db.commit()
+    add_log('编辑体重', 'weight_log', log_id, f"{weight}kg @ {recorded_date}")
+    return jsonify({'message': '已更新'})
 
 
 # ── API: Statistics ───────────────────────────────────────
@@ -1093,7 +1269,7 @@ def get_trends():
 
     # 体重记录
     weights = db.execute("""
-        SELECT weight, recorded_date FROM weight_logs
+        SELECT id, weight, recorded_date, note FROM weight_logs
         WHERE recorded_date >= ?
         ORDER BY recorded_date
     """, (start_date.isoformat(),)).fetchall()
@@ -1127,6 +1303,328 @@ def get_trends():
         'target_ml': target_ml,
         'days': days,
     })
+
+
+# ── Vaccine Schedule (2024 国家免疫规划) ──────────────────
+
+# 国家免疫规划疫苗儿童免疫程序表（2024年版）
+# age_months: 接种月龄（0=出生时, 1=1月龄, ...）
+# dose_index: 第几剂（1-based）
+# 注：自2025年1月1日起，百白破疫苗共接种5剂次
+VACCINE_SCHEDULE = [
+    # 乙肝疫苗 HepB - 出生时/1月龄/6月龄
+    {"name": "乙肝疫苗", "short": "HepB", "age_months": 0, "dose_index": 1, "note": "出生24小时内"},
+    {"name": "乙肝疫苗", "short": "HepB", "age_months": 1, "dose_index": 2, "note": ""},
+    {"name": "乙肝疫苗", "short": "HepB", "age_months": 6, "dose_index": 3, "note": ""},
+    # 卡介苗 BCG - 出生时
+    {"name": "卡介苗", "short": "BCG", "age_months": 0, "dose_index": 1, "note": "出生时"},
+    # 脊灰灭活疫苗 IPV - 2月龄/3月龄
+    {"name": "脊灰灭活疫苗", "short": "IPV", "age_months": 2, "dose_index": 1, "note": ""},
+    {"name": "脊灰灭活疫苗", "short": "IPV", "age_months": 3, "dose_index": 2, "note": ""},
+    # 脊灰减毒活疫苗 bOPV - 4月龄/4岁
+    {"name": "脊灰减毒活疫苗", "short": "bOPV", "age_months": 4, "dose_index": 3, "note": ""},
+    {"name": "脊灰减毒活疫苗", "short": "bOPV", "age_months": 48, "dose_index": 4, "note": "4岁"},
+    # 百白破疫苗 DTaP - 2025新规：2/4/6月龄+18月龄+6岁（共5剂）
+    {"name": "百白破疫苗", "short": "DTaP", "age_months": 2, "dose_index": 1, "note": "2025新规"},
+    {"name": "百白破疫苗", "short": "DTaP", "age_months": 4, "dose_index": 2, "note": "2025新规"},
+    {"name": "百白破疫苗", "short": "DTaP", "age_months": 6, "dose_index": 3, "note": "2025新规"},
+    {"name": "百白破疫苗", "short": "DTaP", "age_months": 18, "dose_index": 4, "note": "18月龄加强"},
+    {"name": "百白破疫苗", "short": "DTaP", "age_months": 72, "dose_index": 5, "note": "6岁加强"},
+    # A群流脑多糖疫苗 MPSV-A - 6月龄/9月龄
+    {"name": "A群流脑多糖疫苗", "short": "MPSV-A", "age_months": 6, "dose_index": 1, "note": ""},
+    {"name": "A群流脑多糖疫苗", "short": "MPSV-A", "age_months": 9, "dose_index": 2, "note": "间隔3月"},
+    # A群C群流脑多糖疫苗 MPSV-AC - 3岁/6岁
+    {"name": "A群C群流脑多糖疫苗", "short": "MPSV-AC", "age_months": 36, "dose_index": 1, "note": "3岁"},
+    {"name": "A群C群流脑多糖疫苗", "short": "MPSV-AC", "age_months": 72, "dose_index": 2, "note": "6岁"},
+    # 麻腮风疫苗 MMR - 8月龄/18月龄
+    {"name": "麻腮风疫苗", "short": "MMR", "age_months": 8, "dose_index": 1, "note": ""},
+    {"name": "麻腮风疫苗", "short": "MMR", "age_months": 18, "dose_index": 2, "note": ""},
+    # 乙脑减毒活疫苗 JE-L - 8月龄/2岁
+    {"name": "乙脑减毒活疫苗", "short": "JE-L", "age_months": 8, "dose_index": 1, "note": ""},
+    {"name": "乙脑减毒活疫苗", "short": "JE-L", "age_months": 24, "dose_index": 2, "note": "2岁"},
+    # 乙脑灭活疫苗 JE-I - 8月龄2剂/2岁/6岁（替代方案）
+    {"name": "乙脑灭活疫苗", "short": "JE-I", "age_months": 8, "dose_index": 1, "note": "减毒替代方案"},
+    {"name": "乙脑灭活疫苗", "short": "JE-I", "age_months": 8, "dose_index": 2, "note": "间隔7-10天"},
+    {"name": "乙脑灭活疫苗", "short": "JE-I", "age_months": 24, "dose_index": 3, "note": "2岁"},
+    {"name": "乙脑灭活疫苗", "short": "JE-I", "age_months": 72, "dose_index": 4, "note": "6岁"},
+    # 甲肝减毒活疫苗 HepA-L - 18月龄
+    {"name": "甲肝减毒活疫苗", "short": "HepA-L", "age_months": 18, "dose_index": 1, "note": "18月龄"},
+    # 甲肝灭活疫苗 HepA-I - 18月龄/2岁（替代方案）
+    {"name": "甲肝灭活疫苗", "short": "HepA-I", "age_months": 18, "dose_index": 1, "note": "减毒替代方案"},
+    {"name": "甲肝灭活疫苗", "short": "HepA-I", "age_months": 24, "dose_index": 2, "note": "间隔6月"},
+]
+
+
+@app.route('/vaccine')
+def vaccine_page():
+    return render_template('vaccine.html', active_page='vaccine')
+
+
+@app.route('/api/vaccine/schedule', methods=['GET'])
+def vaccine_schedule():
+    """返回疫苗规划 + 接种状态"""
+    db = get_db()
+    baby = db.execute("SELECT * FROM babies LIMIT 1").fetchone()
+    if not baby or not baby['birth_date']:
+        return jsonify({'error': '请先设置宝宝出生日期', 'schedule': [], 'overview': None})
+
+    try:
+        birth = datetime.strptime(baby['birth_date'], '%Y-%m-%d')
+    except (ValueError, TypeError):
+        return jsonify({'error': '出生日期格式无效', 'schedule': [], 'overview': None})
+
+    today = date.today()
+    age_days = (today - birth.date()).days
+    age_months = age_days / 30.44
+
+    # 获取已接种记录
+    records = db.execute("SELECT * FROM vaccine_records ORDER BY vaccinated_date").fetchall()
+    record_map = {}
+    for r in records:
+        record_map[(r['vaccine_name'], r['dose_index'])] = dict(r)
+
+    # 获取自定义计划日期覆盖
+    overrides = db.execute("SELECT * FROM vaccine_plan_overrides").fetchall()
+    override_map = {}
+    for o in overrides:
+        override_map[(o['vaccine_name'], o['dose_index'])] = o['custom_due_date']
+
+    # 互斥疫苗：如果已接种灭活则隐藏减毒，反之亦然
+    # 乙脑：减毒(JE-L) vs 灭活(JE-I) 二选一
+    # 甲肝：减毒(HepA-L) vs 灭活(HepA-I) 二选一
+    je_done = any(r['vaccine_name'].startswith('乙脑') for r in records)
+    hepa_done = any(r['vaccine_name'].startswith('甲肝') for r in records)
+    je_inactivated_done = any(r['vaccine_name'] == '乙脑灭活疫苗' for r in records)
+    hepa_inactivated_done = any(r['vaccine_name'] == '甲肝灭活疫苗' for r in records)
+
+    # 默认显示减毒版；如果已接种灭活版则显示灭活版隐藏减毒版
+    schedule_filtered = []
+    for v in VACCINE_SCHEDULE:
+        # 乙脑互斥
+        if v['short'] == 'JE-L' and je_inactivated_done:
+            continue
+        if v['short'] == 'JE-I' and not je_inactivated_done and je_done:
+            continue
+        # 甲肝互斥
+        if v['short'] == 'HepA-L' and hepa_inactivated_done:
+            continue
+        if v['short'] == 'HepA-I' and not hepa_inactivated_done and hepa_done:
+            continue
+        schedule_filtered.append(v)
+
+    # 构建完整计划：标准计划 + 自定义疫苗记录
+    schedule = []
+    for v in schedule_filtered:
+        default_due = (birth + timedelta(days=int(v['age_months'] * 30.44))).strftime('%Y-%m-%d')
+        key = (v['name'], v['dose_index'])
+        rec = record_map.get(key)
+        # 如果有自定义计划日期且未接种，使用自定义日期
+        custom_due = override_map.get(key)
+        due_date = custom_due if (custom_due and not rec) else default_due
+        entry = {
+            **v,
+            'due_date': due_date,
+            'default_due_date': default_due,
+            'status': 'done' if rec else ('overdue' if due_date <= today.isoformat() else 'upcoming'),
+            'vaccinated_date': rec['vaccinated_date'] if rec else None,
+            'note_text': rec['note'] if rec else v.get('note', ''),
+            'is_custom': False,
+        }
+        schedule.append(entry)
+
+    # 添加自定义疫苗记录（不在标准计划中的）
+    standard_names = {v['name'] for v in VACCINE_SCHEDULE}
+    custom_records = [r for r in records if r['vaccine_name'] not in standard_names]
+    # 按疫苗名分组
+    custom_groups = {}
+    for r in custom_records:
+        if r['vaccine_name'] not in custom_groups:
+            custom_groups[r['vaccine_name']] = []
+        custom_groups[r['vaccine_name']].append(dict(r))
+    for name, recs in custom_groups.items():
+        for rec in recs:
+            schedule.append({
+                'name': name,
+                'short': 'Custom',
+                'age_months': 0,
+                'dose_index': rec['dose_index'],
+                'note': '',
+                'due_date': rec['vaccinated_date'],
+                'status': 'done',
+                'vaccinated_date': rec['vaccinated_date'],
+                'note_text': rec['note'],
+                'is_custom': True,
+            })
+
+    # 概览
+    last_done = None
+    next_upcoming = None
+    for s in schedule:
+        if s['status'] == 'done':
+            last_done = s
+        elif s['status'] in ('upcoming', 'overdue') and next_upcoming is None:
+            next_upcoming = s
+
+    overview = {
+        'age_months': round(age_months, 1),
+        'age_days': age_days,
+        'total_doses': len(schedule),
+        'done_count': sum(1 for s in schedule if s['status'] == 'done'),
+        'overdue_count': sum(1 for s in schedule if s['status'] == 'overdue'),
+        'last_done': last_done,
+        'next_upcoming': next_upcoming,
+    }
+    if next_upcoming:
+        due = datetime.strptime(next_upcoming['due_date'], '%Y-%m-%d').date()
+        overview['next_days'] = (due - today).days
+
+    return jsonify({'schedule': schedule, 'overview': overview})
+
+
+@app.route('/api/vaccine/record', methods=['POST'])
+def vaccine_record_add():
+    """记录疫苗接种"""
+    if not is_approved():
+        return jsonify({'error': '无权限'}), 403
+    data = request.get_json()
+    db = get_db()
+    db.execute(
+        "INSERT OR REPLACE INTO vaccine_records (vaccine_name, dose_index, vaccinated_date, note) VALUES (?, ?, ?, ?)",
+        (data['vaccine_name'], data['dose_index'], data['vaccinated_date'], data.get('note', ''))
+    )
+    db.commit()
+    add_log('记录疫苗', 'vaccine', None, f"{data['vaccine_name']}第{data['dose_index']}剂")
+    return jsonify({'message': '已记录'})
+
+
+@app.route('/api/vaccine/record', methods=['DELETE'])
+def vaccine_record_delete():
+    """删除疫苗接种记录"""
+    if not is_approved():
+        return jsonify({'error': '无权限'}), 403
+    data = request.get_json()
+    db = get_db()
+    db.execute("DELETE FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?",
+               (data['vaccine_name'], data['dose_index']))
+    db.commit()
+    add_log('删除疫苗记录', 'vaccine', None, f"{data['vaccine_name']}第{data['dose_index']}剂")
+    return jsonify({'message': '已删除'})
+
+
+@app.route('/api/vaccine/plan-date', methods=['PUT'])
+def update_vaccine_plan_date():
+    """修改未接种项目的计划日期"""
+    if not is_approved():
+        return jsonify({'error': '无权限'}), 403
+    data = request.get_json()
+    vaccine_name = data.get('vaccine_name', '').strip()
+    dose_index = data.get('dose_index')
+    custom_due_date = data.get('custom_due_date', '').strip()
+    if not vaccine_name or not dose_index:
+        return jsonify({'error': '参数不完整'}), 400
+    if not custom_due_date:
+        return jsonify({'error': '请选择日期'}), 400
+    db = get_db()
+    # 检查是否已接种
+    rec = db.execute("SELECT 1 FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?", (vaccine_name, dose_index)).fetchone()
+    if rec:
+        return jsonify({'error': '已接种的项目不能修改计划日期'}), 400
+    db.execute("INSERT OR REPLACE INTO vaccine_plan_overrides (vaccine_name, dose_index, custom_due_date) VALUES (?, ?, ?)",
+               (vaccine_name, dose_index, custom_due_date))
+    db.commit()
+    add_log('修改计划日期', 'vaccine', None, f"{vaccine_name}第{dose_index}剂 → {custom_due_date}")
+    return jsonify({'message': '计划日期已更新'})
+
+
+@app.route('/api/vaccine/dates', methods=['GET'])
+def vaccine_dates():
+    """返回疫苗日期信息供日历显示：已接种日期(黄点) + 未接种日期(红点) + 逾期日期(黑点)"""
+    db = get_db()
+    baby = db.execute("SELECT * FROM babies LIMIT 1").fetchone()
+    result = {'vaccinated': [], 'overdue': [], 'upcoming': []}
+    if not baby or not baby['birth_date']:
+        return jsonify(result)
+
+    try:
+        birth = datetime.strptime(baby['birth_date'], '%Y-%m-%d')
+    except (ValueError, TypeError):
+        return jsonify(result)
+
+    today = date.today()
+
+    # 已接种日期
+    records = db.execute("SELECT vaccinated_date FROM vaccine_records").fetchall()
+    result['vaccinated'] = [r['vaccinated_date'] for r in records if r['vaccinated_date']]
+
+    # 获取自定义计划日期覆盖
+    overrides = db.execute("SELECT * FROM vaccine_plan_overrides").fetchall()
+    override_map = {}
+    for o in overrides:
+        override_map[(o['vaccine_name'], o['dose_index'])] = o['custom_due_date']
+
+    # 未接种：逾期(黑点) + 未到(红点)
+    for v in VACCINE_SCHEDULE:
+        key = (v['name'], v['dose_index'])
+        rec = db.execute("SELECT 1 FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?", key).fetchone()
+        if not rec:
+            default_due = (birth + timedelta(days=int(v['age_months'] * 30.44))).strftime('%Y-%m-%d')
+            due_date = override_map.get(key, default_due)
+            if due_date <= today.isoformat():
+                result['overdue'].append(due_date)
+            else:
+                result['upcoming'].append(due_date)
+
+    return jsonify(result)
+
+
+@app.route('/api/vaccine/day-records', methods=['GET'])
+def vaccine_day_records():
+    """返回某日的疫苗信息（已接种记录+未接种计划）"""
+    rec_date = request.args.get('date', date.today().isoformat())
+    db = get_db()
+    baby = db.execute("SELECT * FROM babies LIMIT 1").fetchone()
+    result = {'vaccinated': [], 'planned': []}
+    if not baby or not baby['birth_date']:
+        return jsonify(result)
+
+    try:
+        birth = datetime.strptime(baby['birth_date'], '%Y-%m-%d')
+    except (ValueError, TypeError):
+        return jsonify(result)
+
+    today = date.today()
+
+    # 已接种记录
+    records = db.execute("SELECT * FROM vaccine_records WHERE vaccinated_date = ?", (rec_date,)).fetchall()
+    for r in records:
+        result['vaccinated'].append({
+            'name': r['vaccine_name'],
+            'dose_index': r['dose_index'],
+            'vaccinated_date': r['vaccinated_date'],
+            'note': r['note'] or ''
+        })
+
+    # 当日应接种但未接种的
+    overrides = db.execute("SELECT * FROM vaccine_plan_overrides").fetchall()
+    override_map = {}
+    for o in overrides:
+        override_map[(o['vaccine_name'], o['dose_index'])] = o['custom_due_date']
+
+    for v in VACCINE_SCHEDULE:
+        key = (v['name'], v['dose_index'])
+        rec = db.execute("SELECT 1 FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?", key).fetchone()
+        if not rec:
+            default_due = (birth + timedelta(days=int(v['age_months'] * 30.44))).strftime('%Y-%m-%d')
+            due_date = override_map.get(key, default_due)
+            if due_date == rec_date:
+                result['planned'].append({
+                    'name': v['name'],
+                    'dose_index': v['dose_index'],
+                    'due_date': due_date,
+                    'status': 'overdue' if due_date <= today.isoformat() else 'upcoming'
+                })
+
+    return jsonify(result)
 
 
 # ── API: Home Assistant ───────────────────────────────────
@@ -1349,6 +1847,24 @@ def ensure_db():
             if not _db_initialized:
                 init_db()
                 _db_initialized = True
+
+
+@app.cli.command('reset-password')
+def reset_password_cmd():
+    """重置管理员密码，生成随机密码并输出"""
+    with app.app_context():
+        db = get_db()
+        admin = db.execute("SELECT id, username FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+        if not admin:
+            print('错误: 未找到管理员账户')
+            return
+        alphabet = string.ascii_letters + string.digits
+        new_pw = ''.join(secrets.choice(alphabet) for _ in range(10))
+        db.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                   (generate_password_hash(new_pw), admin['id']))
+        db.commit()
+        print(f'管理员 [{admin["username"]}] 密码已重置')
+        print(f'新密码: {new_pw}')
 
 
 if __name__ == '__main__':

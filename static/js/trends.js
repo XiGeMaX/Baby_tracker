@@ -1,9 +1,27 @@
-// ── Trends Page ──────────────────────────────────────────
+// ── Trends Page (Chart.js) ───────────────────────────────
 let trendsData = null;
+let weightChartInstance = null;
+let feedChartInstance = null;
+let hourChartInstance = null;
+let excreteChartInstance = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('weight-date').value = new Date().toISOString().slice(0, 10);
     loadTrends();
+
+    // 监听主题变化，销毁重建图表
+    const observer = new MutationObserver(() => {
+        if (trendsData) {
+            renderWeightChart();
+            renderFeedChart();
+            renderHourChart();
+            renderExcreteChart();
+        }
+    });
+    observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme']
+    });
 });
 
 async function loadTrends() {
@@ -19,213 +37,482 @@ async function loadTrends() {
     }
 }
 
-// ── Weight Chart ─────────────────────────────────────────
+// ── 主题颜色 ─────────────────────────────────────────────
+function getThemeColors() {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    return {
+        accent: isLight ? '#059669' : '#00e5a0',
+        accentBg: isLight ? 'rgba(5,150,105,0.15)' : 'rgba(0,229,160,0.15)',
+        blue: isLight ? '#2563eb' : '#60a5fa',
+        blueBg: isLight ? 'rgba(37,99,235,0.5)' : 'rgba(96,165,250,0.5)',
+        amber: isLight ? '#b45309' : '#fbbf24',
+        amberBg: isLight ? 'rgba(180,83,9,0.5)' : 'rgba(251,191,36,0.5)',
+        red: isLight ? '#dc2626' : '#f87171',
+        redBg: isLight ? 'rgba(220,38,38,0.5)' : 'rgba(248,113,113,0.5)',
+        grid: isLight ? 'rgba(0,0,0,0.06)' : 'rgba(128,128,128,0.1)',
+        text: isLight ? '#64748b' : '#94a3b8',
+        surface: isLight ? '#ffffff' : '#1a1b26',
+        border: isLight ? '#e5e7eb' : '#2a2b3d',
+        tooltipBg: isLight ? '#ffffff' : '#1a1b26',
+        tooltipBorder: isLight ? '#e5e7eb' : '#2a2b3d',
+    };
+}
+
+function commonScaleOptions(colors, unit) {
+    return {
+        grid: { color: colors.grid, drawBorder: false },
+        ticks: {
+            color: colors.text,
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+            callback: function(value) { return value + (unit || ''); }
+        },
+        border: { display: false },
+    };
+}
+
+function commonTooltipConfig(colors) {
+    return {
+        backgroundColor: colors.tooltipBg,
+        borderColor: colors.tooltipBorder,
+        borderWidth: 1,
+        titleColor: colors.text,
+        bodyColor: colors.text,
+        titleFont: { family: "'Noto Sans SC', sans-serif", size: 11 },
+        bodyFont: { family: "'JetBrains Mono', monospace", size: 11 },
+        padding: 8,
+        cornerRadius: 6,
+        displayColors: true,
+        boxPadding: 4,
+    };
+}
+
+function destroyChart(instance) {
+    if (instance) {
+        instance.destroy();
+    }
+    return null;
+}
+
+// ── Weight Chart (Line) ─────────────────────────────────
 function renderWeightChart() {
-    const container = document.getElementById('weight-chart');
+    const colors = getThemeColors();
     const list = document.getElementById('weight-list');
     const weights = trendsData.weights;
 
+    weightChartInstance = destroyChart(weightChartInstance);
+
     if (!weights || weights.length === 0) {
-        container.innerHTML = '<p class="text-text-muted text-sm w-full text-center self-center">暂无体重数据，点击右上角记录</p>';
         list.innerHTML = '';
         return;
     }
 
-    const minW = Math.min(...weights.map(w => w.weight)) * 0.95;
-    const maxW = Math.max(...weights.map(w => w.weight)) * 1.05;
-    const range = maxW - minW || 0.5;
+    const ctx = document.getElementById('weight-chart').getContext('2d');
 
-    // 柱子区域和标签分离：柱子用 flex+items-end，百分比高度直接设在 flex 子元素上
-    let barsHtml = '';
-    let labelsHtml = '';
-    weights.forEach(w => {
-        const pct = Math.max(5, ((w.weight - minW) / range) * 100);
-        const label = w.recorded_date.slice(5);
-        barsHtml += `<div class="flex-1 relative group cursor-default" style="height:${pct}%">
-            <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-surface border border-border rounded px-1.5 py-0.5 text-[10px] font-mono text-accent opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-lg">${w.weight}kg</div>
-            <div class="w-full h-full min-w-[8px] bg-accent/60 rounded-t hover:bg-accent transition-colors"></div>
-        </div>`;
-        labelsHtml += `<span class="flex-1 text-center text-[9px] text-text-muted">${label}</span>`;
+    const labels = weights.map(w => w.recorded_date);
+    const data = weights.map(w => w.weight);
+
+    weightChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '体重 (kg)',
+                data: data,
+                borderColor: colors.accent,
+                backgroundColor: colors.accentBg,
+                borderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBackgroundColor: colors.accent,
+                pointBorderColor: colors.surface,
+                pointBorderWidth: 2,
+                fill: true,
+                tension: 0.3,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    ...commonTooltipConfig(colors),
+                    callbacks: {
+                        title: function(items) { return items[0].label; },
+                        label: function(item) { return ` ${item.parsed.y.toFixed(2)} kg`; }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: colors.text,
+                        font: { family: "'JetBrains Mono', monospace", size: 9 },
+                        maxRotation: 0,
+                        callback: function(value, index) {
+                            const label = this.getLabelForValue(value);
+                            return label.slice(5);
+                        }
+                    },
+                    border: { display: false },
+                },
+                y: {
+                    ...commonScaleOptions(colors, 'kg'),
+                    beginAtZero: false,
+                }
+            }
+        }
     });
-    container.innerHTML = `<div class="flex items-end gap-1" style="height:calc(100% - 16px)">${barsHtml}</div>
-        <div class="flex gap-1 mt-0.5">${labelsHtml}</div>`;
 
+    // 体重列表
     list.innerHTML = weights.slice().reverse().slice(0, 5).map(w => `
-        <div class="flex items-center justify-between py-1 text-xs">
-            <span class="text-text-muted font-mono">${w.recorded_date}</span>
-            <span class="font-mono text-text-primary">${w.weight} kg</span>
+        <div class="flex items-center justify-between py-1 text-xs group">
+            <span class="text-text-muted font-mono">${esc(w.recorded_date)}</span>
+            <div class="flex items-center gap-2">
+                <span class="font-mono text-text-primary">${w.weight} kg</span>
+                <button class="text-text-muted hover:text-accent opacity-0 group-hover:opacity-100 transition-opacity"
+                    data-edit-weight data-id="${w.id}" data-weight="${w.weight}" data-date="${esc(w.recorded_date)}" data-note="${esc(w.note || '')}">
+                    <i data-lucide="pencil" class="w-3 h-3"></i>
+                </button>
+                <button class="text-text-muted hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                    data-delete-weight data-id="${w.id}">
+                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                </button>
+            </div>
         </div>
     `).join('');
+    lucide.createIcons();
 }
 
-// ── Feed Chart ───────────────────────────────────────────
+// 体重列表事件委托
+document.addEventListener('click', function(e) {
+    const editBtn = e.target.closest('[data-edit-weight]');
+    if (editBtn) {
+        editWeight(
+            parseInt(editBtn.dataset.id),
+            parseFloat(editBtn.dataset.weight),
+            editBtn.dataset.date,
+            editBtn.dataset.note
+        );
+        return;
+    }
+    const deleteBtn = e.target.closest('[data-delete-weight]');
+    if (deleteBtn) {
+        deleteWeight(parseInt(deleteBtn.dataset.id));
+        return;
+    }
+});
+
+// ── Feed Chart (Bar + Target Line) ─────────────────────
 function renderFeedChart() {
-    const container = document.getElementById('feed-chart');
+    const colors = getThemeColors();
     const daily = trendsData.daily;
 
-    if (!daily || daily.length === 0) {
-        container.innerHTML = '<p class="text-text-muted text-sm absolute inset-0 flex items-center justify-center">暂无数据</p>';
-        return;
-    }
+    feedChartInstance = destroyChart(feedChartInstance);
 
-    const hasData = daily.some(d => d.feed_ml > 0);
-    if (!hasData) {
-        container.innerHTML = '<p class="text-text-muted text-sm absolute inset-0 flex items-center justify-center">暂无喂养数据</p>';
-        return;
-    }
+    if (!daily || daily.length === 0) return;
+    if (!daily.some(d => d.feed_ml > 0)) return;
 
-    const maxMl = Math.max(...daily.map(d => d.feed_ml));
+    const ctx = document.getElementById('feed-chart').getContext('2d');
     const targetMl = trendsData.target_ml || 500;
-    const yMax = Math.max(maxMl, targetMl) * 1.15;
-    const targetPct = (targetMl / yMax) * 100;
 
-    // Y轴刻度
-    const ySteps = 4;
-    let yLabelsHtml = '';
-    let gridHtml = '';
-    for (let i = 0; i <= ySteps; i++) {
-        const val = Math.round(yMax * (1 - i / ySteps));
-        const bottomPct = ((ySteps - i) / ySteps) * 100;
-        yLabelsHtml += `<span class="absolute left-0 right-1 text-[9px] font-mono text-text-muted text-right" style="bottom:${bottomPct}%; transform: translateY(50%)">${val}</span>`;
-        if (i < ySteps) {
-            gridHtml += `<div class="absolute left-0 right-0 border-t border-border/30" style="bottom:${bottomPct}%"></div>`;
+    const labels = daily.map(d => d.date);
+    const data = daily.map(d => d.feed_ml);
+    const isToday = daily.map(d => d.date === getLocalDate());
+
+    const barColors = isToday.map(t => t ? colors.accent : colors.accentBg);
+    const barBorderColors = isToday.map(t => t ? colors.accent : colors.accent);
+
+    // 目标线插件
+    const targetLinePlugin = {
+        id: 'targetLine',
+        afterDatasetsDraw(chart) {
+            const { ctx: c, chartArea, scales } = chart;
+            const y = scales.y.getPixelForValue(targetMl);
+            if (y < chartArea.top || y > chartArea.bottom) return;
+            c.save();
+            c.beginPath();
+            c.setLineDash([6, 4]);
+            c.strokeStyle = colors.accent;
+            c.globalAlpha = 0.5;
+            c.lineWidth = 1.5;
+            c.moveTo(chartArea.left, y);
+            c.lineTo(chartArea.right, y);
+            c.stroke();
+            // 标签
+            c.globalAlpha = 0.7;
+            c.fillStyle = colors.accent;
+            c.font = "9px 'JetBrains Mono', monospace";
+            c.textAlign = 'right';
+            c.fillText(`目标 ${targetMl}ml`, chartArea.right, y - 4);
+            c.restore();
         }
-    }
+    };
 
-    // 目标线
-    gridHtml += `<div class="absolute left-0 right-0 border-t border-dashed border-accent/40" style="bottom:${targetPct}%"></div>
-        <span class="absolute right-1 text-[9px] text-accent/60 font-mono" style="bottom:${targetPct}%; transform: translateY(-100%)">目标 ${targetMl}ml</span>`;
-
-    // 柱子 - 作为 flex 直接子元素，百分比高度才能生效
-    let barsHtml = '';
-    let labelsHtml = '';
-    daily.forEach(d => {
-        const pct = d.feed_ml > 0 ? Math.max(2, (d.feed_ml / yMax) * 100) : 0;
-        const label = d.date.slice(8);
-        const isToday = d.date === getLocalDate();
-        const color = isToday ? 'bg-accent' : 'bg-accent/40';
-        barsHtml += `<div class="flex-1 relative group cursor-default" style="height:${pct}%">
-            <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-surface border border-border rounded px-1.5 py-1 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-lg">
-                <div class="font-mono text-accent">${d.feed_ml}ml</div>
-                <div class="text-text-muted">${d.feed_count}次</div>
-            </div>
-            <div class="w-full h-full min-w-[4px] ${color} rounded-t hover:bg-accent transition-colors"></div>
-        </div>`;
-        labelsHtml += `<span class="flex-1 text-center text-[8px] ${isToday ? 'text-accent font-bold' : 'text-text-muted'}">${label}</span>`;
+    feedChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '喂养量 (ml)',
+                data: data,
+                backgroundColor: barColors,
+                borderColor: barBorderColors,
+                borderWidth: 1,
+                borderRadius: 4,
+                borderSkipped: false,
+            }]
+        },
+        plugins: [targetLinePlugin],
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    ...commonTooltipConfig(colors),
+                    callbacks: {
+                        title: function(items) { return items[0].label; },
+                        label: function(item) {
+                            const d = daily[item.dataIndex];
+                            return [` ${d.feed_ml} ml`, ` ${d.feed_count} 次`];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: colors.text,
+                        font: { family: "'JetBrains Mono', monospace", size: 9 },
+                        maxRotation: 0,
+                        callback: function(value) {
+                            return this.getLabelForValue(value).slice(8);
+                        }
+                    },
+                    border: { display: false },
+                },
+                y: {
+                    ...commonScaleOptions(colors, ''),
+                    beginAtZero: true,
+                    ticks: {
+                        ...commonScaleOptions(colors, '').ticks,
+                        callback: function(value) { return value + ' ml'; }
+                    }
+                }
+            }
+        }
     });
-
-    container.innerHTML = `
-        <div class="absolute left-0 top-0 w-7" style="bottom:20px">${yLabelsHtml}<span class="absolute left-0 right-0 text-[9px] text-text-muted text-center" style="top:50%; transform: translateY(-50%) rotate(-90deg)">ml</span></div>
-        <div class="absolute left-7 right-0 top-0 pointer-events-none" style="bottom:20px">${gridHtml}</div>
-        <div class="absolute left-7 right-0 top-0 flex items-end gap-1" style="bottom:20px">${barsHtml}</div>
-        <div class="absolute left-7 right-0 flex gap-1" style="bottom:2px">${labelsHtml}</div>`;
 }
 
-// ── Hour Chart ───────────────────────────────────────────
+// ── Hour Chart (Bar, 24h) ──────────────────────────────
 function renderHourChart() {
-    const container = document.getElementById('hour-chart');
+    const colors = getThemeColors();
     const hours = trendsData.feed_hours;
 
-    if (!hours || hours.length === 0) {
-        container.innerHTML = '<p class="text-text-muted text-sm w-full text-center self-center">暂无数据</p>';
-        return;
-    }
+    hourChartInstance = destroyChart(hourChartInstance);
 
-    const maxCount = Math.max(...hours.map(h => h.count), 1);
+    if (!hours || hours.length === 0) return;
+
+    const ctx = document.getElementById('hour-chart').getContext('2d');
     const hourMap = {};
     hours.forEach(h => { hourMap[h.hour] = h.count; });
 
-    let barsHtml = '';
+    const labels = [];
+    const data = [];
+    const bgColors = [];
+    const borderColors = [];
     for (let h = 0; h <= 23; h++) {
+        labels.push(`${h}:00`);
         const count = hourMap[h] || 0;
-        const pct = count > 0 ? Math.max(3, (count / maxCount) * 100) : 0;
-        const isActive = count > 0;
-        const hourLabel = `${h}:00-${(h + 1) % 24}:00`;
-        const barColor = isActive ? 'bg-blue-400/60 hover:bg-blue-400' : 'bg-border/30';
-        const barH = isActive ? pct : 2;
-        barsHtml += `<div class="flex-1 relative group cursor-default" style="height:${barH}%">
-            ${isActive ? `<div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-surface border border-border rounded px-1.5 py-0.5 text-[9px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-lg">
-                <span class="font-mono text-blue-400">${count}次</span>
-                <span class="text-text-muted ml-1">${hourLabel}</span>
-            </div>` : ''}
-            <div class="w-full h-full min-w-[2px] ${barColor} rounded-t transition-colors"></div>
-        </div>`;
-    }
-    container.innerHTML = barsHtml;
-}
-
-// ── Excrete Chart ────────────────────────────────────────
-function renderExcreteChart() {
-    const container = document.getElementById('excrete-chart');
-    const daily = trendsData.daily;
-
-    if (!daily || daily.length === 0) {
-        container.innerHTML = '<p class="text-text-muted text-sm absolute inset-0 flex items-center justify-center">暂无数据</p>';
-        return;
-    }
-
-    const hasData = daily.some(d => d.urine_count > 0 || d.stool_count > 0);
-    if (!hasData) {
-        container.innerHTML = '<p class="text-text-muted text-sm absolute inset-0 flex items-center justify-center">暂无排泄数据</p>';
-        return;
-    }
-
-    // Y轴取每日总排泄次数的最大值
-    const maxTotal = Math.max(...daily.map(d => d.urine_count + d.stool_count), 1);
-    const yMax = Math.ceil(maxTotal * 1.2 / 2) * 2 || 2;
-
-    // Y轴刻度
-    const ySteps = Math.min(yMax, 4);
-    let yLabelsHtml = '';
-    let gridHtml = '';
-    for (let i = 0; i <= ySteps; i++) {
-        const val = Math.round(yMax * (1 - i / ySteps));
-        const bottomPct = ((ySteps - i) / ySteps) * 100;
-        yLabelsHtml += `<span class="absolute left-0 right-1 text-[9px] font-mono text-text-muted text-right" style="bottom:${bottomPct}%; transform: translateY(50%)">${val}</span>`;
-        if (i < ySteps) {
-            gridHtml += `<div class="absolute left-0 right-0 border-t border-border/30" style="bottom:${bottomPct}%"></div>`;
+        data.push(count);
+        if (count > 0) {
+            bgColors.push(colors.blueBg);
+            borderColors.push(colors.blue);
+        } else {
+            bgColors.push('rgba(128,128,128,0.1)');
+            borderColors.push('rgba(128,128,128,0.15)');
         }
     }
 
-    // 堆叠柱：每个柱子是一个 flex-col，尿在上便在下
-    let barsHtml = '';
-    let labelsHtml = '';
-    daily.forEach(d => {
-        const urinePct = (d.urine_count / yMax) * 100;
-        const stoolPct = (d.stool_count / yMax) * 100;
-        const totalPct = urinePct + stoolPct;
-        const label = d.date.slice(8);
-        const barH = totalPct > 0 ? totalPct : 0.5;
-        barsHtml += `<div class="flex-1 relative group cursor-default" style="height:${barH}%">
-            <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-surface border border-border rounded px-1.5 py-1 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-lg">
-                <div class="text-amber-400 font-mono">尿 ${d.urine_count}次</div>
-                <div class="text-red-400 font-mono">便 ${d.stool_count}次</div>
-            </div>
-            <div class="w-full h-full flex flex-col justify-end min-w-[4px]">
-                ${d.urine_count > 0 ? `<div class="w-full bg-amber-400/60 rounded-t hover:bg-amber-400/80 transition-colors" style="height:${urinePct}%; min-height:2px"></div>` : ''}
-                ${d.stool_count > 0 ? `<div class="w-full bg-red-400/60 rounded-b hover:bg-red-400/80 transition-colors" style="height:${stoolPct}%; min-height:2px"></div>` : ''}
-            </div>
-        </div>`;
-        labelsHtml += `<span class="flex-1 text-center text-[8px] text-text-muted">${label}</span>`;
+    hourChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '喂养次数',
+                data: data,
+                backgroundColor: bgColors,
+                borderColor: borderColors,
+                borderWidth: 1,
+                borderRadius: 2,
+                borderSkipped: false,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    ...commonTooltipConfig(colors),
+                    callbacks: {
+                        title: function(items) {
+                            const h = items[0].dataIndex;
+                            return `${h}:00 - ${(h + 1) % 24}:00`;
+                        },
+                        label: function(item) { return ` ${item.parsed.y} 次`; }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: {
+                        color: colors.text,
+                        font: { family: "'JetBrains Mono', monospace", size: 8 },
+                        maxRotation: 0,
+                        callback: function(value, index) {
+                            // 只显示 0, 6, 12, 18, 23
+                            if ([0, 6, 12, 18, 23].includes(index)) return value + '时';
+                            return '';
+                        }
+                    },
+                    border: { display: false },
+                },
+                y: {
+                    ...commonScaleOptions(colors, ''),
+                    beginAtZero: true,
+                    ticks: {
+                        ...commonScaleOptions(colors, '').ticks,
+                        stepSize: 1,
+                        callback: function(value) { return value + ' 次'; }
+                    }
+                }
+            }
+        }
     });
+}
 
-    container.innerHTML = `
-        <div class="absolute left-0 top-0 w-7" style="bottom:16px">${yLabelsHtml}<span class="absolute left-0 right-0 text-[9px] text-text-muted text-center" style="top:50%; transform: translateY(-50%) rotate(-90deg)">次</span></div>
-        <div class="absolute left-7 right-0 top-0 pointer-events-none" style="bottom:16px">${gridHtml}</div>
-        <div class="absolute left-7 right-0 top-0 flex items-end gap-1" style="bottom:16px">${barsHtml}</div>
-        <div class="absolute left-7 right-0 flex gap-1" style="bottom:0">${labelsHtml}</div>`;
+// ── Excrete Chart (Stacked Bar) ────────────────────────
+function renderExcreteChart() {
+    const colors = getThemeColors();
+    const daily = trendsData.daily;
+
+    excreteChartInstance = destroyChart(excreteChartInstance);
+
+    if (!daily || daily.length === 0) return;
+    if (!daily.some(d => d.urine_count > 0 || d.stool_count > 0)) return;
+
+    const ctx = document.getElementById('excrete-chart').getContext('2d');
+    const labels = daily.map(d => d.date);
+    const urineData = daily.map(d => d.urine_count);
+    const stoolData = daily.map(d => d.stool_count);
+
+    excreteChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '排尿',
+                    data: urineData,
+                    backgroundColor: colors.amberBg,
+                    borderColor: colors.amber,
+                    borderWidth: 1,
+                    borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 4, bottomRight: 4 },
+                    borderSkipped: false,
+                },
+                {
+                    label: '排便',
+                    data: stoolData,
+                    backgroundColor: colors.redBg,
+                    borderColor: colors.red,
+                    borderWidth: 1,
+                    borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
+                    borderSkipped: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    ...commonTooltipConfig(colors),
+                    callbacks: {
+                        title: function(items) { return items[0].label; },
+                        label: function(item) {
+                            if (item.datasetIndex === 0) return ` 尿 ${item.parsed.y} 次`;
+                            return ` 便 ${item.parsed.y} 次`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: { display: false },
+                    ticks: {
+                        color: colors.text,
+                        font: { family: "'JetBrains Mono', monospace", size: 9 },
+                        maxRotation: 0,
+                        callback: function(value) {
+                            return this.getLabelForValue(value).slice(8);
+                        }
+                    },
+                    border: { display: false },
+                },
+                y: {
+                    stacked: true,
+                    ...commonScaleOptions(colors, ''),
+                    beginAtZero: true,
+                    ticks: {
+                        ...commonScaleOptions(colors, '').ticks,
+                        stepSize: 1,
+                        callback: function(value) { return value + ' 次'; }
+                    }
+                }
+            }
+        }
+    });
 }
 
 // ── Weight Modal ─────────────────────────────────────────
+let _editingWeightId = null;
+
 function showWeightModal() {
+    _editingWeightId = null;
     const m = document.getElementById('weight-modal');
     if (!m) return;
     m.classList.remove('hidden');
     m.classList.add('flex');
     if (typeof fabClose === 'function') fabClose();
+    document.getElementById('weight-modal-title').textContent = '记录体重';
     document.getElementById('weight-date').value = new Date().toISOString().slice(0, 10);
     document.getElementById('weight-value').value = '';
     document.getElementById('weight-note').value = '';
+    document.getElementById('weight-value').focus();
+}
+
+function editWeight(id, weight, date, note) {
+    _editingWeightId = id;
+    const m = document.getElementById('weight-modal');
+    if (!m) return;
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+    if (typeof fabClose === 'function') fabClose();
+    document.getElementById('weight-modal-title').textContent = '编辑体重';
+    document.getElementById('weight-date').value = date;
+    document.getElementById('weight-value').value = weight;
+    document.getElementById('weight-note').value = note;
     document.getElementById('weight-value').focus();
 }
 
@@ -234,6 +521,7 @@ function closeWeightModal() {
     if (!m) return;
     m.classList.add('hidden');
     m.classList.remove('flex');
+    _editingWeightId = null;
 }
 
 async function saveWeight() {
@@ -251,12 +539,31 @@ async function saveWeight() {
     }
 
     try {
-        await api('/api/weight-logs', {
-            method: 'POST',
-            body: JSON.stringify({ weight, recorded_date, note })
-        });
-        showToast('体重已记录');
+        if (_editingWeightId) {
+            await api(`/api/weight-logs/${_editingWeightId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ weight, recorded_date, note })
+            });
+            showToast('体重已更新');
+        } else {
+            await api('/api/weight-logs', {
+                method: 'POST',
+                body: JSON.stringify({ weight, recorded_date, note })
+            });
+            showToast('体重已记录');
+        }
         closeWeightModal();
+        loadTrends();
+    } catch (e) {
+        showToast(e.message);
+    }
+}
+
+async function deleteWeight(id) {
+    if (!await showConfirm('确定删除此体重记录？', { confirmText: '删除', danger: true })) return;
+    try {
+        await api(`/api/weight-logs/${id}`, { method: 'DELETE' });
+        showToast('已删除');
         loadTrends();
     } catch (e) {
         showToast(e.message);

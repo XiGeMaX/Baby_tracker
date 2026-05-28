@@ -23,6 +23,13 @@ const SUB_TYPES = {
 document.addEventListener('DOMContentLoaded', () => {
     Promise.all([loadBaby(), loadSettings(), loadStats(), loadUsers(), loadButtons(), loadLogs()]);
     updateSubTypes();
+    // 事件委托：重置密码按钮
+    document.addEventListener('click', e => {
+        const resetBtn = e.target.closest('[data-reset-pw]');
+        if (resetBtn) showResetPasswordModal(parseInt(resetBtn.dataset.resetPw), resetBtn.dataset.resetName);
+        const renameBtn = e.target.closest('[data-rename-user]');
+        if (renameBtn) showRenameUserModal(parseInt(renameBtn.dataset.renameUser), renameBtn.dataset.renameName);
+    });
 });
 
 // ── Users ────────────────────────────────────────────────
@@ -71,7 +78,8 @@ function renderUsers(users) {
         } else if (u.status === 'rejected') {
             actions = `<button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors" onclick="approveUser(${u.id})">重新批准</button>`;
         }
-        actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors" onclick="showResetPasswordModal(${u.id}, '${esc(u.nickname || u.username)}')">改密</button>`;
+        actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors" data-reset-pw="${u.id}" data-reset-name="${esc(u.nickname || u.username)}">改密</button>`;
+        actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-blue-400 hover:border-blue-500/30 transition-colors" data-rename-user="${u.id}" data-rename-name="${esc(u.username)}">改名</button>`;
         if (u.role !== 'admin') {
             actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-red-400 hover:border-red-500/30 transition-colors" onclick="deleteUser(${u.id})">删除</button>`;
         }
@@ -423,7 +431,60 @@ function renderLogs(logs) {
     }).join('');
 }
 
-function exportCSV() { window.location.href = '/api/export/csv'; }
+function exportCSV() {
+    window.location.href = '/api/export/csv';
+}
+
+// ── Backup & Restore ─────────────────────────────────────
+function backupExport() {
+    window.location.href = '/api/backup/export';
+}
+
+function showRestoreModal() {
+    const m = document.getElementById('restore-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+    document.getElementById('restore-file').value = '';
+    if (typeof fabClose === 'function') fabClose();
+}
+
+function closeRestoreModal() {
+    const m = document.getElementById('restore-modal');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+async function backupRestore() {
+    const fileInput = document.getElementById('restore-file');
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('请选择备份文件');
+        return;
+    }
+    if (!await showConfirm('确定恢复备份？当前所有数据将被覆盖，此操作不可撤销！', { confirmText: '恢复', danger: true })) return;
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    try {
+        const res = await fetch('/api/backup/restore', {
+            method: 'POST',
+            body: formData,
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '恢复失败');
+        const counts = data.counts || {};
+        const summary = Object.entries(counts).map(([t, c]) => `${t}: ${c}条`).join(', ');
+        showToast(`备份已恢复 — ${summary}`);
+        closeRestoreModal();
+        loadStats();
+        loadUsers();
+        loadButtons();
+        loadLogs();
+    } catch (e) {
+        showToast(e.message);
+    }
+}
 
 async function clearData() {
     if (!await showConfirm('确定清除所有记录？此操作不可恢复！', { confirmText: '继续', danger: true })) return;
@@ -439,9 +500,11 @@ async function clearData() {
 
 // ── Reset Password ──────────────────────────────────────
 let _resetUserId = null;
+let _resetUserName = '';
 
 function showResetPasswordModal(userId, userName) {
     _resetUserId = userId;
+    _resetUserName = userName;
     let modal = document.getElementById('reset-pw-modal');
     if (!modal) {
         modal = document.createElement('div');
@@ -486,6 +549,64 @@ async function resetPassword() {
         });
         showToast('密码已重置');
         closeResetPasswordModal();
+    } catch (e) {
+        showToast(e.message);
+    }
+}
+
+// ── Rename User ─────────────────────────────────────────
+let _renameUserId = null;
+
+function showRenameUserModal(userId, currentName) {
+    _renameUserId = userId;
+    let modal = document.getElementById('rename-user-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'rename-user-modal';
+        modal.className = 'fixed inset-0 z-[90] hidden items-center justify-center bg-black/60';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
+        <h3 class="text-sm font-medium text-text-secondary mb-3">修改登录名</h3>
+        <input type="text" id="rename-user-input" class="input-field font-mono" placeholder="输入新登录名（至少2位）" value="${esc(currentName)}">
+        <p class="text-[10px] text-text-muted mt-1">当前: ${esc(currentName)}</p>
+        <div class="flex gap-2 mt-4">
+            <button class="btn-secondary flex-1 text-sm" onclick="closeRenameUserModal()">取消</button>
+            <button class="btn-primary flex-1 text-sm" onclick="renameUser()">确认</button>
+        </div>
+    </div>`;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    if (typeof fabClose === 'function') fabClose();
+    const input = document.getElementById('rename-user-input');
+    input.focus();
+    input.select();
+}
+
+function closeRenameUserModal() {
+    const modal = document.getElementById('rename-user-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+    _renameUserId = null;
+}
+
+async function renameUser() {
+    const newName = document.getElementById('rename-user-input').value.trim();
+    if (!newName || newName.length < 2) {
+        showToast('用户名至少2个字符');
+        return;
+    }
+    try {
+        await api(`/api/users/${_renameUserId}/username`, {
+            method: 'PUT',
+            body: JSON.stringify({ username: newName })
+        });
+        showToast('用户名已更新');
+        closeRenameUserModal();
+        loadUsers();
     } catch (e) {
         showToast(e.message);
     }

@@ -64,6 +64,9 @@
             <a href="/trends" class="nav-item {% if active_page == 'trends' %}active{% endif %}" title="统计趋势">
                 <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
             </a>
+            <a href="/vaccine" class="nav-item {% if active_page == 'vaccine' %}active{% endif %}" title="疫苗规划">
+                <i data-lucide="syringe" class="w-5 h-5"></i>
+            </a>
             <a href="/history" class="nav-item {% if active_page == 'history' %}active{% endif %}" title="历史记录">
                 <i data-lucide="calendar-days" class="w-5 h-5"></i>
             </a>
@@ -101,20 +104,24 @@
 
         <!-- 展开菜单 -->
         <div id="fab-menu" class="fixed bottom-20 right-4 z-[56] flex flex-col-reverse gap-2 items-end pointer-events-none">
-            <a href="/" class="fab-item {% if active_page == 'dashboard' %}active{% endif %}" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+            <a href="/" class="fab-item {% if active_page == 'dashboard' %}active{% endif %}" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
                 <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
                 <span>首页</span>
             </a>
-            <a href="/trends" class="fab-item {% if active_page == 'trends' %}active{% endif %}" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+            <a href="/trends" class="fab-item {% if active_page == 'trends' %}active{% endif %}" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
                 <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
                 <span>趋势</span>
             </a>
-            <a href="/history" class="fab-item {% if active_page == 'history' %}active{% endif %}" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+            <a href="/vaccine" class="fab-item {% if active_page == 'vaccine' %}active{% endif %}" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
+                <i data-lucide="syringe" class="w-5 h-5"></i>
+                <span>疫苗</span>
+            </a>
+            <a href="/history" class="fab-item {% if active_page == 'history' %}active{% endif %}" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
                 <i data-lucide="calendar-days" class="w-5 h-5"></i>
                 <span>历史</span>
             </a>
             {% if current_user and current_user.role == 'admin' %}
-            <a href="/admin" class="fab-item {% if active_page == 'admin' %}active{% endif %}" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+            <a href="/admin" class="fab-item {% if active_page == 'admin' %}active{% endif %}" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
                 <i data-lucide="settings" class="w-5 h-5"></i>
                 <span>管理</span>
             </a>
@@ -131,7 +138,7 @@
                 <span>退出</span>
             </a>
             {% else %}
-            <a href="/login" class="fab-item" style="transform: translateY(16px) scale(0.5); opacity: 0;">
+            <a href="/login" class="fab-item" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
                 <i data-lucide="log-in" class="w-5 h-5"></i>
                 <span>登录</span>
             </a>
@@ -265,13 +272,14 @@
             closeIcon.style.transform = 'rotate(0deg) scale(1)';
             closeIcon.style.opacity = '1';
 
-            // 菜单项逐个弹出
+            // 立即启用所有项的点击和可见性，只延迟弹入动画
             items.forEach((item, i) => {
+                item.style.pointerEvents = 'auto';
+                item.style.opacity = '0.3';
                 setTimeout(() => {
                     item.style.transform = 'translateY(0) scale(1)';
                     item.style.opacity = '1';
-                    item.style.pointerEvents = 'auto';
-                }, i * 50);
+                }, i * 40);
             });
         }
 
@@ -284,11 +292,9 @@
             const menuIcon = btn.querySelector('.fab-icon-menu');
             const closeIcon = btn.querySelector('.fab-icon-close');
 
-            // 遮罩淡出
+            // 立即禁用交互，防止点击穿透
             overlay.classList.add('opacity-0', 'pointer-events-none');
             overlay.classList.remove('opacity-100', 'pointer-events-auto');
-
-            // 菜单容器不可交互
             menu.style.pointerEvents = 'none';
 
             // 按钮图标切换
@@ -297,16 +303,25 @@
             closeIcon.style.transform = 'rotate(-90deg) scale(0)';
             closeIcon.style.opacity = '0';
 
-            // 菜单项逐个收回
-            const total = items.length;
-            items.forEach((item, i) => {
-                setTimeout(() => {
-                    item.style.transform = 'translateY(16px) scale(0.5)';
-                    item.style.opacity = '0';
-                    item.style.pointerEvents = 'none';
-                }, (total - 1 - i) * 30);
+            // 所有菜单项立即收回（不逐个延迟，iOS更流畅）
+            items.forEach(item => {
+                item.style.transform = 'translateY(16px) scale(0.5)';
+                item.style.opacity = '0';
+                item.style.pointerEvents = 'none';
             });
         }
+
+        // FAB 导航链接点击处理（iOS 优化：用 JS 处理导航而非 <a> 默认行为）
+        document.addEventListener('click', function(e) {
+            const fabLink = e.target.closest('[data-fab-link]');
+            if (fabLink && fabOpen) {
+                e.preventDefault();
+                const href = fabLink.getAttribute('href');
+                fabClose();
+                // 用 requestAnimationFrame 替代 setTimeout，确保关闭动画启动后立即导航
+                requestAnimationFrame(() => { window.location.href = href; });
+            }
+        });
     </script>
     <script>lucide.createIcons();</script>
     <!-- Service Worker 注册 -->
