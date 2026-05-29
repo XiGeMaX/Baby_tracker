@@ -1,19 +1,22 @@
 // ── Dashboard ────────────────────────────────────────────
 let dashboardData = null;
 
-(async function init() {
+async function initDashboard() {
     const dateEl = document.getElementById('today-date');
-    dateEl.textContent = new Date().toLocaleDateString('zh-CN', {
-        year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short'
-    });
-
+    if (dateEl) {
+        dateEl.textContent = new Date().toLocaleDateString('zh-CN', {
+            year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short'
+        });
+    }
     await refreshDashboard();
+}
 
-    // 页面切回前台时自动刷新
+document.addEventListener('DOMContentLoaded', () => {
+    initDashboard();
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) refreshDashboard();
     });
-})();
+});
 
 // 手动刷新（带旋转动画）
 async function manualRefresh() {

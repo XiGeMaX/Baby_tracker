@@ -20,17 +20,23 @@ const SUB_TYPES = {
     ]
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+let _adminEventsInit = false;
+
+function initAdmin() {
     Promise.all([loadBaby(), loadSettings(), loadStats(), loadUsers(), loadButtons(), loadLogs()]);
     updateSubTypes();
-    // 事件委托：重置密码按钮
-    document.addEventListener('click', e => {
-        const resetBtn = e.target.closest('[data-reset-pw]');
-        if (resetBtn) showResetPasswordModal(parseInt(resetBtn.dataset.resetPw), resetBtn.dataset.resetName);
-        const renameBtn = e.target.closest('[data-rename-user]');
-        if (renameBtn) showRenameUserModal(parseInt(renameBtn.dataset.renameUser), renameBtn.dataset.renameName);
-    });
-});
+    if (!_adminEventsInit) {
+        _adminEventsInit = true;
+        document.addEventListener('click', e => {
+            const resetBtn = e.target.closest('[data-reset-pw]');
+            if (resetBtn) showResetPasswordModal(parseInt(resetBtn.dataset.resetPw), resetBtn.dataset.resetName);
+            const renameBtn = e.target.closest('[data-rename-user]');
+            if (renameBtn) showRenameUserModal(parseInt(renameBtn.dataset.renameUser), renameBtn.dataset.renameName);
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initAdmin);
 
 // ── Users ────────────────────────────────────────────────
 async function loadUsers() {

@@ -4,25 +4,30 @@ let weightChartInstance = null;
 let feedChartInstance = null;
 let hourChartInstance = null;
 let excreteChartInstance = null;
+let _trendsObserver = null;
 
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('weight-date').value = new Date().toISOString().slice(0, 10);
+function initTrends() {
+    const wd = document.getElementById('weight-date');
+    if (wd) wd.value = new Date().toISOString().slice(0, 10);
     loadTrends();
 
-    // 监听主题变化，销毁重建图表
-    const observer = new MutationObserver(() => {
-        if (trendsData) {
-            renderWeightChart();
-            renderFeedChart();
-            renderHourChart();
-            renderExcreteChart();
-        }
-    });
-    observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['data-theme']
-    });
-});
+    if (!_trendsObserver) {
+        _trendsObserver = new MutationObserver(() => {
+            if (trendsData) {
+                renderWeightChart();
+                renderFeedChart();
+                renderHourChart();
+                renderExcreteChart();
+            }
+        });
+        _trendsObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['data-theme']
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initTrends);
 
 async function loadTrends() {
     const days = document.getElementById('trend-days').value;

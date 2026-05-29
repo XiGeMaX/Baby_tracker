@@ -1,9 +1,11 @@
 // ── Vaccine Page ─────────────────────────────────────────
 let vaccineData = null;
 
-document.addEventListener('DOMContentLoaded', () => {
+function initVaccine() {
     loadVaccine();
-});
+}
+
+document.addEventListener('DOMContentLoaded', initVaccine);
 
 async function loadVaccine() {
     try {

@@ -178,11 +178,12 @@
     </div>
 
     <!-- 主内容 -->
-    <main class="max-w-4xl mx-auto px-4 py-6">
+    <main id="spa-content" class="max-w-4xl mx-auto px-4 py-6">
         {% block content %}{% endblock %}
     </main>
 
     <script src="/static/js/app.js"></script>
+    <script src="/static/js/spa.js"></script>
     {% block scripts %}{% endblock %}
     <script>
         // ── 主题切换 ─────────────────────────────────────
@@ -316,15 +317,18 @@
             });
         }
 
-        // FAB 导航链接点击处理（iOS 优化：用 JS 处理导航而非 <a> 默认行为）
+        // FAB 导航链接点击处理
         document.addEventListener('click', function(e) {
             const fabLink = e.target.closest('[data-fab-link]');
             if (fabLink && fabOpen) {
                 e.preventDefault();
                 const href = fabLink.getAttribute('href');
                 fabClose();
-                // 用 requestAnimationFrame 替代 setTimeout，确保关闭动画启动后立即导航
-                requestAnimationFrame(() => { window.location.href = href; });
+                if (typeof SpaRouter !== 'undefined') {
+                    SpaRouter.navigate(href);
+                } else {
+                    requestAnimationFrame(() => { window.location.href = href; });
+                }
             }
         });
     </script>

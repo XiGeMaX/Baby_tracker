@@ -5,15 +5,21 @@ let vaccineVaccinatedDates = new Set();
 let vaccineOverdueDates = new Set();
 let vaccineUpcomingDates = new Set();
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function initHistory() {
     const now = new Date();
     calYear = now.getFullYear();
     calMonth = now.getMonth();
     selectedDate = formatDateISO(now);
+    recordDates.clear();
+    vaccineVaccinatedDates.clear();
+    vaccineOverdueDates.clear();
+    vaccineUpcomingDates.clear();
     await Promise.all([loadRecordDates(), loadVaccineDates()]);
     renderCalendar();
     loadRecords(selectedDate);
-});
+}
+
+document.addEventListener('DOMContentLoaded', initHistory);
 
 function formatDateISO(d) {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
