@@ -139,9 +139,12 @@ async function deleteUser(id) {
 }
 
 // ── Quick Buttons ────────────────────────────────────────
+let _cachedButtons = [];
+
 async function loadButtons() {
     try {
         const buttons = await api('/api/quick-buttons');
+        _cachedButtons = buttons;
         renderButtons(buttons);
     } catch (e) { /* ignore */ }
 }
@@ -175,6 +178,8 @@ function renderButtons(buttons) {
                 <p class="text-xs text-text-muted">排序: ${b.sort_order} · ${b.is_active ? '启用' : '禁用'}</p>
             </div>
             <div class="flex items-center gap-1 flex-shrink-0">
+                <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors"
+                        onclick="showEditButtonModal(${b.id})">编辑</button>
                 <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-accent transition-colors"
                         onclick="toggleButton(${b.id}, ${b.is_active ? 0 : 1})">${b.is_active ? '禁用' : '启用'}</button>
                 <button class="text-xs px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
@@ -217,15 +222,56 @@ async function deleteButton(id) {
     loadButtons();
 }
 
+let _editingButtonId = null;
+
 function showAddButtonModal() {
+    _editingButtonId = null;
     const m = document.getElementById('add-btn-modal');
     m.classList.remove('hidden');
     m.classList.add('flex');
     if (typeof fabClose === 'function') fabClose();
+    document.getElementById('btn-modal-title').textContent = '添加快速记录按钮';
+    document.getElementById('btn-modal-submit').textContent = '添加';
+    document.getElementById('new-btn-type').value = 'feed';
+    document.getElementById('new-btn-label').value = '';
+    document.getElementById('new-btn-amount').value = '0';
+    document.getElementById('new-btn-order').value = '0';
+    document.getElementById('custom-subtype-input').value = '';
     updateSubTypes();
 }
 
+function showEditButtonModal(id) {
+    const btn = _cachedButtons.find(b => b.id === id);
+    if (!btn) return;
+    _editingButtonId = id;
+    const m = document.getElementById('add-btn-modal');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+    if (typeof fabClose === 'function') fabClose();
+    document.getElementById('btn-modal-title').textContent = '编辑快速记录按钮';
+    document.getElementById('btn-modal-submit').textContent = '保存';
+    document.getElementById('new-btn-type').value = btn.type;
+    updateSubTypes();
+    const sel = document.getElementById('new-btn-subtype');
+    const knownValues = new Set((SUB_TYPES[btn.type] || []).map(s => s.value));
+    if (btn.sub_type && !knownValues.has(btn.sub_type)) {
+        sel.innerHTML += `<option value="${esc(btn.sub_type)}" selected>${esc(btn.sub_type)}</option>`;
+    } else {
+        sel.value = btn.sub_type;
+    }
+    onSubTypeChange();
+    if (sel.value === '_custom' && btn.sub_type !== '_custom') {
+        document.getElementById('custom-subtype-input').value = btn.sub_type;
+    } else if (btn.sub_type && !knownValues.has(btn.sub_type)) {
+        document.getElementById('custom-subtype-wrap').classList.add('hidden');
+    }
+    document.getElementById('new-btn-label').value = btn.label || '';
+    document.getElementById('new-btn-amount').value = btn.amount || 0;
+    document.getElementById('new-btn-order').value = btn.sort_order || 0;
+}
+
 function closeAddButtonModal() {
+    _editingButtonId = null;
     const m = document.getElementById('add-btn-modal');
     m.classList.add('hidden');
     m.classList.remove('flex');
@@ -269,8 +315,14 @@ async function addButton() {
         return;
     }
     try {
-        await api('/api/quick-buttons', { method: 'POST', body: JSON.stringify(data) });
-        showToast('按钮已添加');
+        if (_editingButtonId) {
+            data.is_active = _cachedButtons.find(b => b.id === _editingButtonId)?.is_active ?? 1;
+            await api(`/api/quick-buttons/${_editingButtonId}`, { method: 'PUT', body: JSON.stringify(data) });
+            showToast('按钮已更新');
+        } else {
+            await api('/api/quick-buttons', { method: 'POST', body: JSON.stringify(data) });
+            showToast('按钮已添加');
+        }
         closeAddButtonModal();
         loadButtons();
     } catch (e) {

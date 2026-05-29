@@ -75,42 +75,14 @@
             <h2 class="text-sm font-medium text-text-secondary">奶量设置</h2>
         </div>
         <div>
-            <label class="text-text-muted text-xs mb-1 block">每日目标奶量</label>
-            <div class="flex items-center gap-3">
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="milk-mode" value="auto" checked class="accent-accent" onchange="toggleMilkMode()">
-                    <span class="text-sm text-text-secondary">自动估算</span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="milk-mode" value="custom" class="accent-accent" onchange="toggleMilkMode()">
-                    <span class="text-sm text-text-secondary">自定义</span>
-                </label>
-            </div>
-            <div id="custom-milk-input" class="mt-2 hidden">
-                <input type="number" id="custom-target" class="input-field font-mono" placeholder="每日目标 ml" min="100" max="2000">
-            </div>
+            <label class="text-text-muted text-xs mb-1 block">每日目标奶量 (ml)</label>
+            <input type="number" id="custom-target" class="input-field font-mono" placeholder="如 800" min="100" max="2000">
         </div>
         <div>
             <label class="text-text-muted text-xs mb-1 block">每日预估喂养次数</label>
             <input type="number" id="feeds-per-day" class="input-field font-mono" min="4" max="16" value="8">
         </div>
-        <div class="bg-base rounded-lg p-3 border border-border">
-            <p class="text-xs text-text-muted mb-1">当前估算</p>
-            <p class="font-mono text-sm text-accent" id="estimate-text">加载中...</p>
-        </div>
         <button class="btn-primary text-sm" onclick="saveSettings()">保存设置</button>
-
-        <!-- 估算系数配置 -->
-        <div class="mt-2">
-            <div class="flex items-center justify-between mb-2">
-                <label class="text-text-muted text-xs">估算系数 (ml/kg/天)</label>
-                <button class="text-xs text-text-muted hover:text-accent transition-colors" onclick="resetCoeffs()">恢复默认</button>
-            </div>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-2" id="coeff-fields">
-                <!-- JS 动态填充 -->
-            </div>
-            <p class="text-text-muted text-[10px] mt-2">修改系数后点击「保存设置」生效。日龄期按体重×系数计算，月龄期按基础量递减计算。</p>
-        </div>
     </div>
 
     <!-- 数据管理 -->
@@ -190,10 +162,10 @@
     </div>
 </div>
 
-<!-- 添加按钮弹窗 -->
+<!-- 添加/编辑按钮弹窗 -->
 <div id="add-btn-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
     <div class="bg-surface border border-border rounded-xl p-6 w-96 max-w-[90vw]">
-        <h3 class="text-sm font-medium text-text-secondary mb-4">添加快速记录按钮</h3>
+        <h3 id="btn-modal-title" class="text-sm font-medium text-text-secondary mb-4">添加快速记录按钮</h3>
         <div class="space-y-3">
             <div>
                 <label class="text-text-muted text-xs mb-1 block">类型</label>
@@ -201,11 +173,16 @@
                     <option value="feed">喂养</option>
                     <option value="excrete">排泄</option>
                     <option value="symptom">症状</option>
+                    <option value="supplement">补充</option>
                 </select>
             </div>
             <div>
                 <label class="text-text-muted text-xs mb-1 block">子类型</label>
-                <select id="new-btn-subtype" class="input-field"></select>
+                <select id="new-btn-subtype" class="input-field" onchange="onSubTypeChange()"></select>
+            </div>
+            <div id="custom-subtype-wrap" class="hidden">
+                <label class="text-text-muted text-xs mb-1 block">自定义子类型名称</label>
+                <input type="text" id="custom-subtype-input" class="input-field" placeholder="如：维D滴剂">
             </div>
             <div>
                 <label class="text-text-muted text-xs mb-1 block">显示标签</label>
@@ -222,7 +199,7 @@
         </div>
         <div class="flex gap-2 mt-4">
             <button class="btn-secondary flex-1 text-sm" onclick="closeAddButtonModal()">取消</button>
-            <button class="btn-primary flex-1 text-sm" onclick="addButton()">添加</button>
+            <button id="btn-modal-submit" class="btn-primary flex-1 text-sm" onclick="addButton()">添加</button>
         </div>
     </div>
 </div>
