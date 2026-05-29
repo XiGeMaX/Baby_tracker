@@ -11,9 +11,6 @@
             <p class="text-text-muted text-sm mt-0.5 font-mono" id="today-date"></p>
         </div>
         <div class="flex items-center gap-2">
-            <button id="refresh-btn" class="w-9 h-9 rounded-lg border border-border bg-surface flex items-center justify-center text-text-muted hover:text-accent hover:border-accent/30 active:scale-90 transition-all duration-150" onclick="manualRefresh()" title="刷新数据">
-                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-            </button>
             {% if not current_user %}
             <a href="/login" class="btn-primary flex items-center gap-2 text-sm">
                 <i data-lucide="log-in" class="w-4 h-4"></i>

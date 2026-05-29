@@ -58,7 +58,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             baby_id INTEGER NOT NULL DEFAULT 1,
             user_id INTEGER,
-            type TEXT NOT NULL CHECK(type IN ('feed','excrete','symptom')),
+            type TEXT NOT NULL,
             sub_type TEXT NOT NULL,
             amount REAL,
             duration INTEGER,
@@ -80,13 +80,13 @@ def init_db():
             username TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             nickname TEXT NOT NULL DEFAULT '',
-            role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),
-            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+            role TEXT NOT NULL DEFAULT 'user',
+            status TEXT NOT NULL DEFAULT 'pending',
             created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
         );
         CREATE TABLE IF NOT EXISTS quick_buttons (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            type TEXT NOT NULL CHECK(type IN ('feed','excrete','symptom')),
+            type TEXT NOT NULL,
             sub_type TEXT NOT NULL,
             label TEXT NOT NULL,
             amount REAL DEFAULT 0,
@@ -196,6 +196,82 @@ def init_db():
             )
 
     db.commit()
+
+    _migrate_check_constraints(db)
+
+
+def _migrate_check_constraints(db):
+    try:
+        schema = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='records'").fetchone()
+        if schema and 'CHECK' in schema['sql']:
+            db.execute("ALTER TABLE records RENAME TO _records_old")
+            db.execute('''CREATE TABLE records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                baby_id INTEGER NOT NULL DEFAULT 1,
+                user_id INTEGER,
+                type TEXT NOT NULL,
+                sub_type TEXT NOT NULL,
+                amount REAL,
+                duration INTEGER,
+                color TEXT,
+                consistency TEXT,
+                temperature REAL,
+                note TEXT,
+                timestamp TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )''')
+            cols = 'id,baby_id,user_id,type,sub_type,amount,duration,color,consistency,temperature,note,timestamp,created_at'
+            db.execute(f"INSERT INTO records ({cols}) SELECT {cols} FROM _records_old")
+            db.execute("DROP TABLE _records_old")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_records_baby_id ON records(baby_id)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_records_type ON records(type)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_records_timestamp ON records(timestamp)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_records_user_id ON records(user_id)")
+            db.commit()
+    except Exception:
+        pass
+
+    try:
+        schema = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='quick_buttons'").fetchone()
+        if schema and 'CHECK' in schema['sql']:
+            db.execute("ALTER TABLE quick_buttons RENAME TO _quick_buttons_old")
+            db.execute('''CREATE TABLE quick_buttons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                sub_type TEXT NOT NULL,
+                label TEXT NOT NULL,
+                amount REAL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )''')
+            cols = 'id,type,sub_type,label,amount,sort_order,is_active,created_at'
+            db.execute(f"INSERT INTO quick_buttons ({cols}) SELECT {cols} FROM _quick_buttons_old")
+            db.execute("DROP TABLE _quick_buttons_old")
+            db.commit()
+    except Exception:
+        pass
+
+    try:
+        schema = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+        if schema and 'CHECK' in schema['sql']:
+            db.execute("ALTER TABLE users RENAME TO _users_old")
+            db.execute('''CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                nickname TEXT NOT NULL DEFAULT '',
+                role TEXT NOT NULL DEFAULT 'user',
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            )''')
+            cols = 'id,username,password_hash,nickname,role,status,created_at'
+            db.execute(f"INSERT INTO users ({cols}) SELECT {cols} FROM _users_old")
+            db.execute("DROP TABLE _users_old")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+            db.commit()
+    except Exception:
+        pass
 
 
 # ── Audit Log ─────────────────────────────────────────────
@@ -634,7 +710,7 @@ def get_records():
     except ValueError:
         return jsonify({'error': '日期格式无效，需 YYYY-MM-DD'}), 400
     rec_type = request.args.get('type', None)
-    if rec_type and rec_type not in ('feed', 'excrete', 'symptom'):
+    if rec_type and rec_type not in ('feed', 'excrete', 'symptom', 'supplement'):
         return jsonify({'error': '无效的记录类型'}), 400
     start = f"{rec_date} 00:00:00"
     end = f"{rec_date} 23:59:59"
@@ -659,7 +735,7 @@ def create_record():
     data = request.get_json()
     if not data or 'type' not in data or 'sub_type' not in data:
         return jsonify({'error': '缺少必填字段'}), 400
-    if data['type'] not in ('feed', 'excrete', 'symptom'):
+    if data['type'] not in ('feed', 'excrete', 'symptom', 'supplement'):
         return jsonify({'error': '无效的记录类型'}), 400
 
     u = current_user()
@@ -695,7 +771,7 @@ def update_record(record_id):
         return jsonify({'error': '记录不存在'}), 404
 
     data = request.get_json()
-    if data.get('type') and data['type'] not in ('feed', 'excrete', 'symptom'):
+    if data.get('type') and data['type'] not in ('feed', 'excrete', 'symptom', 'supplement'):
         return jsonify({'error': '无效的记录类型'}), 400
 
     # 前端传来的本地日期，用于概览查询
@@ -1013,11 +1089,12 @@ def export_csv():
     output = StringIO()
     writer = csv.writer(output)
     # 中文列名 + 中文类型映射
-    type_map = {'feed': '喂养', 'excrete': '排泄', 'symptom': '症状'}
+    type_map = {'feed': '喂养', 'excrete': '排泄', 'symptom': '症状', 'supplement': '补充'}
     sub_map = {
         'breast_left': '母乳(左)', 'breast_right': '母乳(右)', 'formula': '配方奶', 'water': '水',
         'urine': '尿', 'stool': '便', 'both': '尿+便',
-        'vomit': '呕吐', 'fever': '发热', 'jaundice': '黄疸', 'rash': '皮疹', 'other': '其他',
+        'vomit': '呕吐', 'fever': '发热', 'jaundice': '黄疸', 'rash': '皮疹',
+        'vitamin_d': '维D', 'vitamin_ad': '维AD', 'iron': '铁剂', 'calcium': '钙剂', 'dha': 'DHA', 'probiotics': '益生菌',
     }
     writer.writerow(['ID', '类型', '子类型', '量(ml)', '时长(分)', '颜色', '性状', '体温', '备注', '时间'])
     for r in rows:

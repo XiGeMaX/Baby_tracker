@@ -70,7 +70,8 @@ function formatDateTime(ts) {
 const TYPE_LABELS = {
     feed: '喂养',
     excrete: '排泄',
-    symptom: '症状'
+    symptom: '症状',
+    supplement: '补充'
 };
 
 const SUB_TYPE_LABELS = {
@@ -85,11 +86,17 @@ const SUB_TYPE_LABELS = {
     fever: '发热',
     jaundice: '黄疸',
     rash: '皮疹',
-    other: '其他'
+    vitamin_d: '维D',
+    vitamin_ad: '维AD',
+    iron: '铁剂',
+    calcium: '钙剂',
+    dha: 'DHA',
+    probiotics: '益生菌'
 };
 
 function typeLabel(type, subType) {
     if (subType && SUB_TYPE_LABELS[subType]) return SUB_TYPE_LABELS[subType];
+    if (subType && !SUB_TYPE_LABELS[subType]) return subType;
     return TYPE_LABELS[type] || type;
 }
 
@@ -148,6 +155,7 @@ const EDIT_SUB_TYPES = {
         { value: 'breast_right', label: '母乳(右)' },
         { value: 'formula', label: '配方奶' },
         { value: 'water', label: '水' },
+        { value: '_custom', label: '自定义...' },
     ],
     excrete: [
         { value: 'urine', label: '尿' },
@@ -159,7 +167,16 @@ const EDIT_SUB_TYPES = {
         { value: 'fever', label: '发热' },
         { value: 'jaundice', label: '黄疸' },
         { value: 'rash', label: '皮疹' },
-        { value: 'other', label: '其他' },
+        { value: '_custom', label: '自定义...' },
+    ],
+    supplement: [
+        { value: 'vitamin_d', label: '维D' },
+        { value: 'vitamin_ad', label: '维AD' },
+        { value: 'iron', label: '铁剂' },
+        { value: 'calcium', label: '钙剂' },
+        { value: 'dha', label: 'DHA' },
+        { value: 'probiotics', label: '益生菌' },
+        { value: '_custom', label: '自定义...' },
     ]
 };
 
@@ -196,11 +213,16 @@ function _showEditModal(r) {
                     <option value="feed" ${r.type==='feed'?'selected':''}>喂养</option>
                     <option value="excrete" ${r.type==='excrete'?'selected':''}>排泄</option>
                     <option value="symptom" ${r.type==='symptom'?'selected':''}>症状</option>
+                    <option value="supplement" ${r.type==='supplement'?'selected':''}>补充</option>
                 </select>
             </div>
             <div>
                 <label class="text-text-muted text-xs mb-1 block">子类型</label>
-                <select id="edit-subtype" class="input-field"></select>
+                <select id="edit-subtype" class="input-field" onchange="_onEditTypeChange()"></select>
+            </div>
+            <div id="edit-custom-subtype-wrap" class="hidden">
+                <label class="text-text-muted text-xs mb-1 block">自定义子类型名称</label>
+                <input type="text" id="edit-custom-subtype-input" class="input-field" placeholder="如：维D滴剂">
             </div>
             <div>
                 <label class="text-text-muted text-xs mb-1 block">量 (ml)</label>
@@ -251,10 +273,17 @@ function _onEditTypeChange() {
     const type = document.getElementById('edit-type').value;
     const sel = document.getElementById('edit-subtype');
     const options = EDIT_SUB_TYPES[type] || [];
+    const currentSub = window._editCurrentSubType;
+    const knownValues = new Set(options.map(s => s.value));
     sel.innerHTML = options.map(s =>
-        `<option value="${s.value}" ${s.value === window._editCurrentSubType ? 'selected' : ''}>${s.label}</option>`
+        `<option value="${s.value}" ${s.value === currentSub ? 'selected' : ''}>${s.label}</option>`
     ).join('');
+    if (currentSub && !knownValues.has(currentSub) && currentSub !== '_custom') {
+        sel.innerHTML += `<option value="${esc(currentSub)}" selected>${esc(currentSub)}</option>`;
+    }
     window._editCurrentSubType = sel.value;
+    const wrap = document.getElementById('edit-custom-subtype-wrap');
+    if (wrap) wrap.classList.toggle('hidden', sel.value !== '_custom');
 }
 
 function closeEditModal() {
@@ -266,9 +295,17 @@ function closeEditModal() {
 }
 
 async function _saveEditRecord(id) {
+    let subType = document.getElementById('edit-subtype').value;
+    if (subType === '_custom') {
+        subType = document.getElementById('edit-custom-subtype-input').value.trim();
+        if (!subType) {
+            showToast('请输入自定义子类型名称');
+            return;
+        }
+    }
     const data = {
         type: document.getElementById('edit-type').value,
-        sub_type: document.getElementById('edit-subtype').value,
+        sub_type: subType,
         amount: document.getElementById('edit-amount').value ? parseFloat(document.getElementById('edit-amount').value) : null,
         duration: document.getElementById('edit-duration').value ? parseInt(document.getElementById('edit-duration').value) : null,
         color: document.getElementById('edit-color').value,

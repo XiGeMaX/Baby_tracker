@@ -5,6 +5,7 @@ const SUB_TYPES = {
         { value: 'breast_right', label: '母乳(右)' },
         { value: 'formula', label: '配方奶' },
         { value: 'water', label: '水' },
+        { value: '_custom', label: '自定义...' },
     ],
     excrete: [
         { value: 'urine', label: '尿' },
@@ -16,7 +17,16 @@ const SUB_TYPES = {
         { value: 'fever', label: '发热' },
         { value: 'jaundice', label: '黄疸' },
         { value: 'rash', label: '皮疹' },
-        { value: 'other', label: '其他' },
+        { value: '_custom', label: '自定义...' },
+    ],
+    supplement: [
+        { value: 'vitamin_d', label: '维D' },
+        { value: 'vitamin_ad', label: '维AD' },
+        { value: 'iron', label: '铁剂' },
+        { value: 'calcium', label: '钙剂' },
+        { value: 'dha', label: 'DHA' },
+        { value: 'probiotics', label: '益生菌' },
+        { value: '_custom', label: '自定义...' },
     ]
 };
 
@@ -143,8 +153,8 @@ function renderButtons(buttons) {
         return;
     }
 
-    const typeLabels = { feed: '喂养', excrete: '排泄', symptom: '症状' };
-    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400' };
+    const typeLabels = { feed: '喂养', excrete: '排泄', symptom: '症状', supplement: '补充' };
+    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
 
     container.innerHTML = buttons.map((b, i) => `
         <div class="flex items-center gap-3 py-2 px-3 rounded-lg bg-base border border-border ${b.is_active ? '' : 'opacity-40'}">
@@ -224,13 +234,31 @@ function closeAddButtonModal() {
 function updateSubTypes() {
     const type = document.getElementById('new-btn-type').value;
     const sel = document.getElementById('new-btn-subtype');
-    sel.innerHTML = SUB_TYPES[type].map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+    const opts = SUB_TYPES[type] || [];
+    sel.innerHTML = opts.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+    onSubTypeChange();
+}
+
+function onSubTypeChange() {
+    const sel = document.getElementById('new-btn-subtype');
+    const wrap = document.getElementById('custom-subtype-wrap');
+    if (wrap) {
+        wrap.classList.toggle('hidden', sel.value !== '_custom');
+    }
 }
 
 async function addButton() {
+    let subType = document.getElementById('new-btn-subtype').value;
+    if (subType === '_custom') {
+        subType = document.getElementById('custom-subtype-input').value.trim();
+        if (!subType) {
+            showToast('请输入自定义子类型名称');
+            return;
+        }
+    }
     const data = {
         type: document.getElementById('new-btn-type').value,
-        sub_type: document.getElementById('new-btn-subtype').value,
+        sub_type: subType,
         label: document.getElementById('new-btn-label').value.trim(),
         amount: parseInt(document.getElementById('new-btn-amount').value) || 0,
         sort_order: parseInt(document.getElementById('new-btn-order').value) || 0,
@@ -271,110 +299,32 @@ async function saveBaby() {
     try {
         await api('/api/baby', { method: 'PUT', body: JSON.stringify(data) });
         showToast('婴儿信息已保存');
-        loadEstimate();
     } catch (e) {
         showToast('保存失败: ' + e.message);
     }
 }
 
 // ── Settings ─────────────────────────────────────────────
-const COEFF_LABELS = {
-    day0: '出生当天 (ml)',
-    day1: '日龄1天 (ml/kg)',
-    day2_3: '日龄2-3天 (ml/kg)',
-    day4_7: '日龄4-7天 (ml/kg)',
-    day8_14: '日龄8-14天 (ml/kg)',
-    day15_28: '日龄15-28天 (ml/kg)',
-    month1_3: '1-3月龄 (ml/kg)',
-    month4_6: '4-6月龄 (ml/kg)',
-    month4_6_cap: '4-6月上限 (ml)',
-    month6_12_base: '6-12月基础量 (ml)',
-    month6_12_decay: '6-12月月递减 (ml)',
-    month6_12_min: '6-12月下限 (ml)',
-    year1_plus: '1岁以上 (ml)',
-};
-
-const DEFAULT_COEFFS = {
-    day0: 60, day1: 60, day2_3: 80, day4_7: 100,
-    day8_14: 120, day15_28: 135, month1_3: 150,
-    month4_6: 150, month4_6_cap: 900,
-    month6_12_base: 800, month6_12_decay: 30, month6_12_min: 600,
-    year1_plus: 500,
-};
-
-let currentCoeffs = { ...DEFAULT_COEFFS };
-
 async function loadSettings() {
     try {
         const settings = await api('/api/settings');
-        const custom = settings.custom_daily_target;
-        if (custom && custom.trim()) {
-            document.querySelector('input[name="milk-mode"][value="custom"]').checked = true;
-            document.getElementById('custom-target').value = custom;
-            document.getElementById('custom-milk-input').classList.remove('hidden');
+        if (settings.custom_daily_target) {
+            document.getElementById('custom-target').value = settings.custom_daily_target;
         }
         document.getElementById('feeds-per-day').value = settings.feeds_per_day || 8;
-
-        // 解析系数
-        try {
-            const parsed = JSON.parse(settings.milk_coefficients || '{}');
-            currentCoeffs = { ...DEFAULT_COEFFS, ...parsed };
-        } catch (e) { /* use defaults */ }
-        renderCoeffFields();
-
-        loadEstimate();
     } catch (e) { /* ignore */ }
 }
 
-function renderCoeffFields() {
-    const container = document.getElementById('coeff-fields');
-    container.innerHTML = Object.entries(COEFF_LABELS).map(([key, label]) => `
-        <div>
-            <label class="text-text-muted text-[10px] mb-0.5 block">${label}</label>
-            <input type="number" id="coeff-${key}" class="input-field font-mono text-xs py-1.5" value="${currentCoeffs[key] || 0}" step="1" min="0"
-                   onchange="onCoeffChange('${key}', this.value)">
-        </div>
-    `).join('');
-}
-
-function onCoeffChange(key, value) {
-    currentCoeffs[key] = parseFloat(value) || 0;
-}
-
-function resetCoeffs() {
-    currentCoeffs = { ...DEFAULT_COEFFS };
-    renderCoeffFields();
-    showToast('系数已恢复默认，点击保存生效');
-}
-
 async function saveSettings() {
-    const mode = document.querySelector('input[name="milk-mode"]:checked').value;
     const data = {
         feeds_per_day: parseInt(document.getElementById('feeds-per-day').value) || 8,
-        custom_daily_target: mode === 'custom' ? (document.getElementById('custom-target').value || '') : '',
-        milk_coefficients: JSON.stringify(currentCoeffs)
+        custom_daily_target: document.getElementById('custom-target').value || '',
     };
     try {
         await api('/api/settings', { method: 'PUT', body: JSON.stringify(data) });
         showToast('设置已保存');
-        loadEstimate();
     } catch (e) {
         showToast('保存失败: ' + e.message);
-    }
-}
-
-function toggleMilkMode() {
-    const mode = document.querySelector('input[name="milk-mode"]:checked').value;
-    document.getElementById('custom-milk-input').classList.toggle('hidden', mode !== 'custom');
-}
-
-async function loadEstimate() {
-    try {
-        const est = await api('/api/milk-estimate');
-        document.getElementById('estimate-text').textContent =
-            `${est.calculation_detail} | 单次约 ${est.per_feed_ml}ml`;
-    } catch (e) {
-        document.getElementById('estimate-text').textContent = '估算失败';
     }
 }
 

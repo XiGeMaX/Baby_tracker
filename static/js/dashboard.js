@@ -19,13 +19,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // 手动刷新（带旋转动画）
-async function manualRefresh() {
-    const icon = document.querySelector('#refresh-btn i');
-    if (icon) icon.classList.add('animate-spin');
-    await refreshDashboard();
-    setTimeout(() => { if (icon) icon.classList.remove('animate-spin'); }, 400);
-}
-
 async function refreshDashboard() {
     try {
         const data = await api(`/api/records/today?date=${getLocalDate()}`);
@@ -76,9 +69,9 @@ function renderQuickButtons(buttons) {
     const container = document.getElementById('quick-buttons');
     if (!container) return;
 
-    const typeIcons = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse' };
-    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400' };
-    const typeBorders = { feed: 'border-blue-500/20', excrete: 'border-amber-500/20', symptom: 'border-red-500/20' };
+    const typeIcons = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
+    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
+    const typeBorders = { feed: 'border-blue-500/20', excrete: 'border-amber-500/20', symptom: 'border-red-500/20', supplement: 'border-purple-500/20' };
 
     let html = '';
     for (const btn of buttons) {
@@ -128,13 +121,17 @@ function renderRecentRecords(records) {
     }
 
     container.innerHTML = records.map(r => {
-        const typeClass = r.type === 'feed' ? 'badge-feed' : r.type === 'excrete' ? 'badge-excrete' : 'badge-symptom';
+        const badgeMap = { feed: 'badge-feed', excrete: 'badge-excrete', symptom: 'badge-symptom', supplement: 'badge-supplement' };
+        const typeClass = badgeMap[r.type] || 'badge-symptom';
+        const bgMap = { feed: 'bg-blue-500/10', excrete: 'bg-amber-500/10', symptom: 'bg-red-500/10', supplement: 'bg-purple-500/10' };
+        const iconMap = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
+        const colorMap = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
         const detail = buildRecordDetail(r);
 
         return `
         <div class="card flex items-center gap-3 py-3 px-4 fade-in">
-            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${r.type === 'feed' ? 'bg-blue-500/10' : r.type === 'excrete' ? 'bg-amber-500/10' : 'bg-red-500/10'}">
-                <i data-lucide="${r.type === 'feed' ? 'droplets' : r.type === 'excrete' ? 'circle-dot' : 'heart-pulse'}" class="w-4 h-4 ${r.type === 'feed' ? 'text-blue-400' : r.type === 'excrete' ? 'text-amber-400' : 'text-red-400'}"></i>
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bgMap[r.type] || bgMap.symptom}">
+                <i data-lucide="${iconMap[r.type] || iconMap.symptom}" class="w-4 h-4 ${colorMap[r.type] || colorMap.symptom}"></i>
             </div>
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
