@@ -14,6 +14,7 @@ import string
 app = Flask(__name__)
 app.config['DATABASE'] = os.path.join(os.path.dirname(__file__), 'data', 'baby.db')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'baby-tracker-secret-key-change-in-prod')
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 
 @app.after_request
@@ -482,6 +483,7 @@ def login():
     if user['status'] == 'rejected':
         return jsonify({'error': '账号已被拒绝，请联系管理员'}), 403
 
+    session.permanent = True
     session['user_id'] = user['id']
     session['role'] = user['role']
     add_log('登录', 'user', user['id'], f"用户 {user['username']} 登录")
@@ -596,25 +598,35 @@ def update_quick_button(btn_id):
         return jsonify({'error': '无权限'}), 403
     data = request.get_json()
     db = get_db()
-    new_order = data.get('sort_order', 0)
-    # 获取当前排序值
-    current = db.execute("SELECT sort_order FROM quick_buttons WHERE id = ?", (btn_id,)).fetchone()
-    if current and current['sort_order'] != new_order:
-        if new_order > current['sort_order']:
-            # 排序值变大：中间的按钮前移
+
+    existing = db.execute("SELECT * FROM quick_buttons WHERE id = ?", (btn_id,)).fetchone()
+    if not existing:
+        return jsonify({'error': '按钮不存在'}), 404
+
+    all_fields = ['type', 'sub_type', 'label', 'amount', 'sort_order', 'is_active']
+    updates = []
+    params = []
+    for f in all_fields:
+        if f in data:
+            updates.append(f"{f} = ?")
+            params.append(data[f])
+
+    if not updates:
+        return jsonify({'message': '无变更'})
+
+    new_order = data.get('sort_order', existing['sort_order'])
+    if 'sort_order' in data and existing['sort_order'] != new_order:
+        if new_order > existing['sort_order']:
             db.execute("UPDATE quick_buttons SET sort_order = sort_order - 1 WHERE sort_order > ? AND sort_order <= ? AND id != ?",
-                       (current['sort_order'], new_order, btn_id))
+                       (existing['sort_order'], new_order, btn_id))
         else:
-            # 排序值变小：中间的按钮后移
             db.execute("UPDATE quick_buttons SET sort_order = sort_order + 1 WHERE sort_order >= ? AND sort_order < ? AND id != ?",
-                       (new_order, current['sort_order'], btn_id))
-    db.execute(
-        "UPDATE quick_buttons SET type=?, sub_type=?, label=?, amount=?, sort_order=?, is_active=? WHERE id=?",
-        (data['type'], data['sub_type'], data['label'], data.get('amount', 0),
-         new_order, data.get('is_active', 1), btn_id)
-    )
+                       (new_order, existing['sort_order'], btn_id))
+
+    params.append(btn_id)
+    db.execute(f"UPDATE quick_buttons SET {', '.join(updates)} WHERE id = ?", params)
     db.commit()
-    add_log('修改按钮', 'quick_button', btn_id, data['label'])
+    add_log('修改按钮', 'quick_button', btn_id, data.get('label', ''))
     return jsonify({'message': '已更新'})
 
 
@@ -1706,6 +1718,38 @@ def vaccine_day_records():
 
 # ── API: Home Assistant ───────────────────────────────────
 
+def _check_ha_api_key():
+    api_key = request.args.get('api_key') or request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not api_key:
+        return False
+    db = get_db()
+    row = db.execute("SELECT value FROM settings WHERE key = 'ha_api_key'").fetchone()
+    if not row or not row['value']:
+        return False
+    return secrets.compare_digest(api_key, row['value'])
+
+
+@app.route('/api/ha/api-key', methods=['POST'])
+def generate_ha_api_key():
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+    new_key = secrets.token_urlsafe(32)
+    db = get_db()
+    db.execute("INSERT INTO settings (key, value) VALUES ('ha_api_key', ?) ON CONFLICT(key) DO UPDATE SET value=?, updated_at=datetime('now','localtime')",
+               (new_key, new_key))
+    db.commit()
+    add_log('生成HA密钥', 'settings', None, '')
+    return jsonify({'api_key': new_key})
+
+
+@app.route('/api/ha/api-key', methods=['GET'])
+def get_ha_api_key():
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+    db = get_db()
+    row = db.execute("SELECT value FROM settings WHERE key = 'ha_api_key'").fetchone()
+    return jsonify({'api_key': row['value'] if row else ''})
+
 @app.route('/api/ha/status', methods=['GET'])
 def ha_status():
     target_date = request.args.get('date') or date.today().isoformat()
@@ -1815,7 +1859,10 @@ def ha_button_state(btn_id):
 
 @app.route('/api/ha/button/<int:btn_id>/press', methods=['POST'])
 def ha_button_press(btn_id):
-    """HA 开关打开时调用：记录一次快速记录，保持 on 2秒后回弹 off"""
+    """HA 开关打开时调用：记录一次快速记录，保持 on 2秒后回弹 off。需要 API 密钥认证。"""
+    if not _check_ha_api_key():
+        return jsonify({'error': '未授权，请提供有效的 API 密钥'}), 401
+
     db = get_db()
     btn = db.execute("SELECT * FROM quick_buttons WHERE id = ? AND is_active = 1", (btn_id,)).fetchone()
     if not btn:

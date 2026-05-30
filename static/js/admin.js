@@ -33,7 +33,7 @@ const SUB_TYPES = {
 let _adminEventsInit = false;
 
 function initAdmin() {
-    Promise.all([loadBaby(), loadSettings(), loadStats(), loadUsers(), loadButtons(), loadLogs()]);
+    Promise.all([loadBaby(), loadSettings(), loadStats(), loadUsers(), loadButtons(), loadLogs(), loadHaApiKey()]);
     updateSubTypes();
     if (!_adminEventsInit) {
         _adminEventsInit = true;
@@ -618,4 +618,40 @@ async function renameUser() {
     } catch (e) {
         showToast(e.message);
     }
+}
+
+// ── HA API Key ──────────────────────────────────────────
+async function loadHaApiKey() {
+    try {
+        const data = await api('/api/ha/api-key');
+        const el = document.getElementById('ha-api-key');
+        if (el) el.value = data.api_key || '';
+    } catch (e) { /* ignore */ }
+}
+
+async function generateHaApiKey() {
+    if (!await showConfirm('生成新的 API 密钥？旧密钥将立即失效。', { confirmText: '生成' })) return;
+    try {
+        const data = await api('/api/ha/api-key', { method: 'POST' });
+        const el = document.getElementById('ha-api-key');
+        if (el) el.value = data.api_key || '';
+        showToast('API 密钥已生成');
+    } catch (e) {
+        showToast(e.message);
+    }
+}
+
+function copyHaApiKey() {
+    const el = document.getElementById('ha-api-key');
+    if (!el || !el.value) {
+        showToast('请先生成 API 密钥');
+        return;
+    }
+    navigator.clipboard.writeText(el.value).then(() => {
+        showToast('已复制到剪贴板');
+    }).catch(() => {
+        el.select();
+        document.execCommand('copy');
+        showToast('已复制');
+    });
 }

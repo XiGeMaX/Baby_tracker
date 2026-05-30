@@ -149,6 +149,15 @@
             <i data-lucide="home" class="w-4 h-4 text-accent"></i>
             <h2 class="text-sm font-medium text-text-secondary">Home Assistant 接口</h2>
         </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">API 密钥（快速记录接口认证）</label>
+            <div class="flex gap-2">
+                <input type="text" id="ha-api-key" class="input-field font-mono text-xs flex-1" readonly placeholder="未生成">
+                <button class="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap" onclick="copyHaApiKey()">复制</button>
+                <button class="btn-primary text-xs px-3 py-1.5 whitespace-nowrap" onclick="generateHaApiKey()">生成密钥</button>
+            </div>
+            <p class="text-[10px] text-text-muted mt-1">生成后，HA 快速记录接口需携带 api_key 参数或 Authorization 头认证</p>
+        </div>
         <div class="bg-base rounded-lg p-3 border border-border font-mono text-xs text-text-secondary space-y-1 overflow-x-auto">
             <p class="text-text-muted"># 今日奶量</p>
             <p>GET http://&lt;IP&gt;:8964/api/ha/status</p>
@@ -158,6 +167,8 @@
             <p>GET http://&lt;IP&gt;:8964/api/ha/last-feed</p>
             <p class="text-text-muted mt-1"># 今日排泄</p>
             <p>GET http://&lt;IP&gt;:8964/api/ha/excrete-today</p>
+            <p class="text-text-muted mt-1"># 快速记录（需密钥）</p>
+            <p>POST http://&lt;IP&gt;:8964/api/ha/button/&lt;btn_id&gt;/press?api_key=&lt;KEY&gt;</p>
         </div>
     </div>
 </div>
