@@ -201,10 +201,10 @@ function _showEditModal(r) {
         document.body.appendChild(modal);
     }
 
-    const ts = r.timestamp ? r.timestamp.replace(' ', 'T').slice(0, 16) : '';
+    const ts = r.timestamp || '';
 
     modal.innerHTML = `
-    <div class="bg-surface border border-border rounded-xl p-6 w-[420px] max-w-[90vw] max-h-[85vh] overflow-y-auto">
+    <div class="edit-modal-content bg-surface border border-border rounded-xl p-6 w-[420px] max-w-[90vw]">
         <h3 class="text-sm font-medium text-text-secondary mb-4">编辑记录 #${r.id}</h3>
         <div class="space-y-3">
             <div>
@@ -218,7 +218,7 @@ function _showEditModal(r) {
             </div>
             <div>
                 <label class="text-text-muted text-xs mb-1 block">子类型</label>
-                <select id="edit-subtype" class="input-field" onchange="_onEditTypeChange()"></select>
+                <select id="edit-subtype" class="input-field" onchange="_onEditSubtypeChange()"></select>
             </div>
             <div id="edit-custom-subtype-wrap" class="hidden">
                 <label class="text-text-muted text-xs mb-1 block">自定义子类型名称</label>
@@ -245,8 +245,12 @@ function _showEditModal(r) {
                 <input type="number" id="edit-temperature" class="input-field font-mono" value="${esc(r.temperature || '')}" step="0.1">
             </div>
             <div>
+                <label class="text-text-muted text-xs mb-1 block">日期</label>
+                <input type="date" id="edit-date" class="input-field font-mono" value="${esc(ts.slice(0,10))}">
+            </div>
+            <div>
                 <label class="text-text-muted text-xs mb-1 block">时间</label>
-                <input type="datetime-local" id="edit-timestamp" class="input-field font-mono" value="${esc(ts)}">
+                <input type="time" id="edit-time" class="input-field font-mono" value="${esc(ts.slice(11,16))}">
             </div>
             <div>
                 <label class="text-text-muted text-xs mb-1 block">备注</label>
@@ -281,9 +285,24 @@ function _onEditTypeChange() {
     if (currentSub && !knownValues.has(currentSub) && currentSub !== '_custom') {
         sel.innerHTML += `<option value="${esc(currentSub)}" selected>${esc(currentSub)}</option>`;
     }
-    window._editCurrentSubType = sel.value;
     const wrap = document.getElementById('edit-custom-subtype-wrap');
     if (wrap) wrap.classList.toggle('hidden', sel.value !== '_custom');
+    if (sel.value === '_custom') {
+        const ci = document.getElementById('edit-custom-subtype-input');
+        if (ci && currentSub && currentSub !== '_custom' && !knownValues.has(currentSub)) {
+            ci.value = currentSub;
+        }
+    }
+}
+
+function _onEditSubtypeChange() {
+    const sel = document.getElementById('edit-subtype');
+    const wrap = document.getElementById('edit-custom-subtype-wrap');
+    if (wrap) wrap.classList.toggle('hidden', sel.value !== '_custom');
+    if (sel.value === '_custom') {
+        const ci = document.getElementById('edit-custom-subtype-input');
+        if (ci) ci.focus();
+    }
 }
 
 function closeEditModal() {
@@ -312,8 +331,8 @@ async function _saveEditRecord(id) {
         consistency: document.getElementById('edit-consistency').value,
         temperature: document.getElementById('edit-temperature').value ? parseFloat(document.getElementById('edit-temperature').value) : null,
         note: document.getElementById('edit-note').value,
-        timestamp: document.getElementById('edit-timestamp').value
-            ? document.getElementById('edit-timestamp').value.replace('T', ' ') + ':00'
+        timestamp: (document.getElementById('edit-date').value && document.getElementById('edit-time').value)
+            ? document.getElementById('edit-date').value + ' ' + document.getElementById('edit-time').value + ':00'
             : null,
         _date: getLocalDate(),
     };

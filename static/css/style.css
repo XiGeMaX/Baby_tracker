@@ -356,6 +356,22 @@ select.input-field option {
     background: var(--c-surface); color: var(--c-text-primary);
 }
 
+input[type="date"].input-field,
+input[type="time"].input-field {
+    appearance: none;
+    -webkit-appearance: none;
+}
+input[type="date"].input-field::-webkit-calendar-picker-indicator,
+input[type="time"].input-field::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.5;
+    filter: var(--calendar-icon-filter, none);
+}
+input[type="date"].input-field::-webkit-date-and-time-value,
+input[type="time"].input-field::-webkit-date-and-time-value {
+    text-align: start;
+}
+
 .hour-day-picker {
     font-family: inherit;
     font-size: 10px;
@@ -378,6 +394,18 @@ select.input-field option {
 .hour-day-picker:invalid,
 .hour-day-picker[value=""] {
     color: var(--c-text-muted);
+}
+
+#edit-modal {
+    -webkit-overflow-scrolling: touch;
+    overflow-y: auto;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.edit-modal-content {
+    max-height: 85vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: auto;
 }
 
 /* ── Theme Toggle ────────────────────────────────────── */
@@ -407,4 +435,7 @@ select.input-field option {
 [data-theme="light"] .hover\:bg-red-500\/10:hover { background: rgba(220,38,38,0.08); }
 [data-theme="light"] .hover\:bg-accent\/10:hover { background: rgba(5,150,105,0.08); }
 [data-theme="light"] .hover\:bg-white\/5:hover { background: rgba(0,0,0,0.04); }
-[data-theme="light"] .hover\:bg-white\/\[0\.02\]:hover { background: rgba(0,0,0,0.03); }
+[data-theme="light"] .hover\:bg-white/\[0\.02\]:hover { background: rgba(0,0,0,0.03); }
+
+:root { --calendar-icon-filter: invert(1); }
+[data-theme="light"] { --calendar-icon-filter: none; }
