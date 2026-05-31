@@ -117,34 +117,62 @@ services:
 
 ## Home Assistant 集成
 
-### 快速配置
+管理面板内置「快速配置向导」（推荐）。
 
-**REST 传感器**（读取喂养数据）：
+### 快速配置向导
+
+| 步骤 | 操作 |
+|------|------|
+| 1. 生成 API 密钥 | 管理面板 → Home Assistant 集成 → 点击「生成」并复制 |
+| 2. 填写服务地址 | 输入 Baby Tracker 的局域网 IP + 端口（默认 `8964`） |
+| 3. 选择实体 | 勾选需要的传感器（只读）和开关（可远程记录） |
+| 4. 生成配置代码 | 点击「生成配置代码」，复制粘贴到 HA 的 `configuration.yaml` |
+
+重启 Home Assistant 或 reload YAML 配置即可生效。
+
+### 手动配置
+
+**传感器示例：**
+
 ```yaml
 sensor:
   - platform: rest
-    name: "Baby Feeding Today"
-    resource: "http://<HOST>:8964/api/ha/today"
-    scan_interval: 60
-    value_template: "{{ value_json.feed_ml }}ml"
+    name: "宝宝今日奶量"
+    resource: "http://<IP>:8964/api/ha/status"
+    value_template: "{{ value_json.total_feed_ml }}"
+    unit_of_measurement: "ml"
     json_attributes:
       - feed_count
+      - target_ml
       - urine_count
       - stool_count
-      - last_weight
+      - last_feed_time
+    scan_interval: 300
 ```
 
-**REST 开关**（远程快速记录）：
+**开关示例：**
+
 ```yaml
 switch:
   - platform: rest
-    name: "Baby Quick Feed"
-    resource: "http://<HOST>:8964/api/ha/button/<BUTTON_ID>"
-    body_on: '{"action":"on"}'
-    body_off: '{"action":"off"}'
+    name: "喂养-母乳30ml"
+    resource: "http://<IP>:8964/api/ha/button/1?api_key=<YOUR_API_KEY>"
+    body_on: '{"state":"on"}'
+    body_off: '{"state":"off"}'
     is_on_template: "{{ value_json.state == 'on' }}"
+    headers:
+      Content-Type: application/json
+    scan_interval: 5
 ```
 
+### 仪表盘卡片
+
+```yaml
+type: entities
+title: 宝宝喂养
+entities:
+  - sensor.bao_bao_jin_ri_nai_liang
+  - switch.wei_yang_mu_ru30ml
 ---
 
 ## PWA 安装
