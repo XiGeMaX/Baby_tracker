@@ -44,10 +44,16 @@
 
     <!-- 喂养时段分布 -->
     <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-            <i data-lucide="clock" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary">喂养时段分布</h2>
-            <span class="text-[10px] text-text-muted">(次)</span>
+        <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+                <i data-lucide="clock" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary">喂养时段分布</h2>
+                <span class="text-[10px] text-text-muted">(次)</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <input type="date" id="hour-chart-day" class="hour-day-picker" onchange="renderHourChart()" title="选择日期">
+                <button class="text-[10px] text-text-muted hover:text-accent hover:underline whitespace-nowrap" onclick="clearHourDay()">全部</button>
+            </div>
         </div>
         <div style="position:relative;height:160px">
             <canvas id="hour-chart"></canvas>

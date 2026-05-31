@@ -426,6 +426,10 @@ function renderLogs(logs) {
         '重置密码': 'text-amber-400',
         '清除数据': 'text-red-400',
         '导出CSV': 'text-text-secondary',
+        'HA快速记录': 'text-purple-400',
+        '生成HA密钥': 'text-purple-400',
+        '备份数据': 'text-blue-400',
+        '恢复数据': 'text-amber-400',
     };
 
     container.innerHTML = logs.map(l => {
@@ -620,13 +624,49 @@ async function renameUser() {
     }
 }
 
-// ── HA API Key ──────────────────────────────────────────
+// ── HA Integration Wizard ────────────────────────────────
+let _haButtons = [];
+
 async function loadHaApiKey() {
     try {
         const data = await api('/api/ha/api-key');
         const el = document.getElementById('ha-api-key');
         if (el) el.value = data.api_key || '';
     } catch (e) { /* ignore */ }
+    loadHaButtons();
+}
+
+async function loadHaButtons() {
+    try {
+        _haButtons = await api('/api/ha/buttons');
+        renderHaButtonChecks();
+    } catch (e) {
+        _haButtons = [];
+    }
+}
+
+function renderHaButtonChecks() {
+    const container = document.getElementById('ha-button-checks');
+    if (!container) return;
+    if (_haButtons.length === 0) {
+        container.innerHTML = '<p class="text-[10px] text-text-muted">暂无启用的快速记录按钮</p>';
+        return;
+    }
+    const typeLabels = { feed: '喂养', excrete: '排泄', symptom: '症状', supplement: '补充' };
+    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
+    container.innerHTML = _haButtons.map(b => `
+        <label class="flex items-center gap-2 py-1 cursor-pointer">
+            <input type="checkbox" class="ha-entity accent-accent" data-type="switch" data-id="${b.id}" data-label="${esc(b.label)}" checked>
+            <span class="text-xs ${typeColors[b.type] || ''}">${typeLabels[b.type] || b.type}</span>
+            <span class="text-xs text-text-primary">${esc(b.label)}</span>
+        </label>
+    `).join('');
+}
+
+function haToggleAllButtons() {
+    const checks = document.querySelectorAll('.ha-entity[data-type="switch"]');
+    const allChecked = Array.from(checks).every(c => c.checked);
+    checks.forEach(c => { c.checked = !allChecked; });
 }
 
 async function generateHaApiKey() {
@@ -647,11 +687,137 @@ function copyHaApiKey() {
         showToast('请先生成 API 密钥');
         return;
     }
-    navigator.clipboard.writeText(el.value).then(() => {
-        showToast('已复制到剪贴板');
-    }).catch(() => {
-        el.select();
-        document.execCommand('copy');
-        showToast('已复制');
+    _copyText(el.value, '密钥已复制');
+}
+
+function generateHaYaml() {
+    const host = document.getElementById('ha-host')?.value?.trim() || '<BABY_TRACKER_IP>';
+    const port = document.getElementById('ha-port')?.value || '8964';
+    const apiKey = document.getElementById('ha-api-key')?.value || '<YOUR_API_KEY>';
+    const base = `http://${host}:${port}`;
+
+    const sensors = [];
+    const switches = [];
+
+    document.querySelectorAll('.ha-entity').forEach(cb => {
+        if (!cb.checked) return;
+        const type = cb.dataset.type;
+        const id = cb.dataset.id;
+        if (type === 'sensor') sensors.push(id);
+        else if (type === 'switch') switches.push({ id: parseInt(id), label: cb.dataset.label });
     });
+
+    if (sensors.length === 0 && switches.length === 0) {
+        document.getElementById('ha-yaml-output').textContent = '# 请至少勾选一个传感器或开关';
+        return;
+    }
+
+    const lines = [];
+
+    if (sensors.length > 0) {
+        lines.push('sensor:');
+        const sensorConfigs = {
+            'status': {
+                name: '宝宝今日奶量',
+                resource: '/api/ha/status',
+                value_template: '{{ value_json.total_feed_ml }}',
+                unit: 'ml',
+                attrs: ['feed_count', 'target_ml', 'remaining_ml', 'feed_progress', 'urine_count', 'stool_count', 'last_feed_time', 'estimated_feeds_left', 'per_feed_ml']
+            },
+            'feed-today': {
+                name: '宝宝今日喂养',
+                resource: '/api/ha/feed-today',
+                value_template: '{{ value_json.state }}',
+                unit: '',
+                attrs: ['feed_count', 'feeds']
+            },
+            'last-feed': {
+                name: '宝宝上次喂养',
+                resource: '/api/ha/last-feed',
+                value_template: '{{ value_json.state }}',
+                unit: '',
+                attrs: ['sub_type', 'amount_ml', 'duration_min']
+            },
+            'excrete-today': {
+                name: '宝宝今日排泄',
+                resource: '/api/ha/excrete-today',
+                value_template: '{{ value_json.state }}',
+                unit: '',
+                attrs: ['urine_count', 'stool_count', 'total_count']
+            }
+        };
+
+        sensors.forEach(sid => {
+            const cfg = sensorConfigs[sid];
+            if (!cfg) return;
+            lines.push(`  - platform: rest`);
+            lines.push(`    name: "${cfg.name}"`);
+            lines.push(`    resource: "${base}${cfg.resource}"`);
+            lines.push(`    value_template: "${cfg.value_template}"`);
+            if (cfg.unit) lines.push(`    unit_of_measurement: "${cfg.unit}"`);
+            if (cfg.attrs.length > 0) {
+                lines.push(`    json_attributes:`);
+                cfg.attrs.forEach(a => lines.push(`      - ${a}`));
+            }
+            lines.push(`    scan_interval: 300`);
+            lines.push('');
+        });
+    }
+
+    if (switches.length > 0) {
+        lines.push('switch:');
+        switches.forEach(sw => {
+            const safeName = sw.label.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
+            lines.push(`  # ${sw.label}`);
+            lines.push(`  - platform: rest`);
+            lines.push(`    name: "${sw.label}"`);
+            lines.push(`    resource: "${base}/api/ha/button/${sw.id}?api_key=${apiKey}"`);
+            lines.push(`    body_on: '{"state":"on"}'`);
+            lines.push(`    body_off: '{"state":"off"}'`);
+            lines.push(`    is_on_template: "{{ value_json.state == 'on' }}"`);
+            lines.push(`    headers:`);
+            lines.push(`      Content-Type: application/json`);
+            lines.push(`    scan_interval: 5`);
+            lines.push('');
+        });
+    }
+
+    document.getElementById('ha-yaml-output').textContent = lines.join('\n').trimEnd();
+}
+
+function copyHaYaml() {
+    const text = document.getElementById('ha-yaml-output')?.textContent;
+    if (!text || text.trim() === '' || text.includes('点击上方按钮')) {
+        showToast('请先点击生成配置代码');
+        return;
+    }
+    _copyText(text, '配置已复制到剪贴板');
+}
+
+function _copyText(text, msg) {
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            showToast(msg || '已复制');
+        }).catch(() => {
+            _fallbackCopy(text, msg);
+        });
+    } else {
+        _fallbackCopy(text, msg);
+    }
+}
+
+function _fallbackCopy(text, msg) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+        document.execCommand('copy');
+        showToast(msg || '已复制');
+    } catch (e) {
+        showToast('复制失败，请手动选择文本复制');
+    }
+    document.body.removeChild(ta);
 }

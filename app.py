@@ -290,6 +290,19 @@ def add_log(action, target_type='', target_id=None, detail=''):
     db.commit()
 
 
+def add_log_ha(action, target_type='', target_id=None, detail=''):
+    """记录 HA 来源的操作日志"""
+    db = get_db()
+    u = db.execute("SELECT id, nickname, username FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+    user_id = u['id'] if u else None
+    username = f"HA/{u['nickname'] or u['username']}" if u else 'HA'
+    db.execute(
+        "INSERT INTO audit_logs (user_id, username, action, target_type, target_id, detail) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, username, action, target_type, target_id, detail)
+    )
+    db.commit()
+
+
 # ── Auth Helpers ──────────────────────────────────────────
 
 def current_user():
@@ -1356,6 +1369,15 @@ def get_trends():
         GROUP BY hour ORDER BY hour
     """, (start_date.isoformat(),)).fetchall()
 
+    feed_hours_by_day = db.execute("""
+        SELECT DATE(timestamp) as date,
+               CAST(strftime('%H', timestamp) AS INTEGER) as hour,
+               COUNT(*) as count
+        FROM records
+        WHERE type='feed' AND timestamp >= ?
+        GROUP BY date, hour ORDER BY date, hour
+    """, (start_date.isoformat(),)).fetchall()
+
     # 体重记录
     weights = db.execute("""
         SELECT id, weight, recorded_date, note FROM weight_logs
@@ -1388,6 +1410,7 @@ def get_trends():
     return jsonify({
         'daily': daily_data,
         'feed_hours': [dict(r) for r in feed_hours],
+        'feed_hours_by_day': [dict(r) for r in feed_hours_by_day],
         'weights': [dict(r) for r in weights],
         'target_ml': target_ml,
         'days': days,
@@ -1838,9 +1861,11 @@ def ha_buttons():
     return jsonify(result)
 
 
-@app.route('/api/ha/button/<int:btn_id>', methods=['GET'])
+@app.route('/api/ha/button/<int:btn_id>', methods=['GET', 'POST'])
 def ha_button_state(btn_id):
-    """HA 轮询按钮状态"""
+    """HA 按钮端点：GET 查询状态，POST 触发记录"""
+    if request.method == 'POST':
+        return _ha_do_press(btn_id)
     db = get_db()
     btn = db.execute("SELECT * FROM quick_buttons WHERE id = ? AND is_active = 1", (btn_id,)).fetchone()
     if not btn:
@@ -1859,7 +1884,12 @@ def ha_button_state(btn_id):
 
 @app.route('/api/ha/button/<int:btn_id>/press', methods=['POST'])
 def ha_button_press(btn_id):
-    """HA 开关打开时调用：记录一次快速记录，保持 on 2秒后回弹 off。需要 API 密钥认证。"""
+    """HA 开关备用端点：触发记录"""
+    return _ha_do_press(btn_id)
+
+
+def _ha_do_press(btn_id):
+    """HA 快速记录核心逻辑"""
     if not _check_ha_api_key():
         return jsonify({'error': '未授权，请提供有效的 API 密钥'}), 401
 
@@ -1868,29 +1898,28 @@ def ha_button_press(btn_id):
     if not btn:
         return jsonify({'state': 'unavailable'}), 404
 
-    # 需要一个已审批用户来记录，HA 场景下使用系统账户
     u = db.execute("SELECT id, username, nickname FROM users WHERE role = 'admin' LIMIT 1").fetchone()
     if not u:
         return jsonify({'error': '无管理员账户'}), 500
 
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     cursor = db.execute(
-        """INSERT INTO records (baby_id, user_id, type, sub_type, amount, timestamp)
-           VALUES (1, ?, ?, ?, ?, ?)""",
+        """INSERT INTO records (baby_id, user_id, type, sub_type, amount, timestamp, note)
+           VALUES (1, ?, ?, ?, ?, ?, ?)""",
         (u['id'], btn['type'], btn['sub_type'],
-         btn['amount'] if btn['amount'] is not None else None, timestamp)
+         btn['amount'] if btn['amount'] is not None else None, timestamp,
+         '[HA]')
     )
     db.commit()
-    add_log('HA快速记录', 'record', cursor.lastrowid, f"{btn['label']} @ {timestamp}")
 
-    # 设置按钮状态为 on
+    add_log_ha('HA快速记录', 'record', cursor.lastrowid,
+               f"{btn['label']} @ {timestamp}")
+
     _ha_button_states[btn_id] = 'on'
 
-    # 取消之前的定时器（防重复点击）
     if btn_id in _ha_button_timers:
         _ha_button_timers[btn_id].cancel()
 
-    # 2秒后自动回弹为 off
     timer = threading.Timer(2.0, _ha_btn_off, args=(btn_id,))
     timer.daemon = True
     timer.start()

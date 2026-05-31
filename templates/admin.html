@@ -143,32 +143,101 @@
         </div>
     </div>
 
-    <!-- HA 接口 -->
-    <div class="card space-y-3">
+    <!-- HA 接口配置向导 -->
+    <div class="card space-y-4">
         <div class="flex items-center gap-2 mb-1">
             <i data-lucide="home" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary">Home Assistant 接口</h2>
+            <h2 class="text-sm font-medium text-text-secondary">Home Assistant 集成</h2>
         </div>
-        <div>
-            <label class="text-text-muted text-xs mb-1 block">API 密钥（快速记录接口认证）</label>
-            <div class="flex gap-2">
-                <input type="text" id="ha-api-key" class="input-field font-mono text-xs flex-1" readonly placeholder="未生成">
-                <button class="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap" onclick="copyHaApiKey()">复制</button>
-                <button class="btn-primary text-xs px-3 py-1.5 whitespace-nowrap" onclick="generateHaApiKey()">生成密钥</button>
+
+        <!-- 步骤1: 生成密钥 -->
+        <div class="bg-base rounded-lg p-3 border border-border space-y-2">
+            <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-bold">1</span>
+                <span class="text-sm text-text-primary font-medium">生成 API 密钥</span>
             </div>
-            <p class="text-[10px] text-text-muted mt-1">生成后，HA 快速记录接口需携带 api_key 参数或 Authorization 头认证</p>
+            <div class="flex gap-2">
+                <input type="text" id="ha-api-key" class="input-field font-mono text-xs flex-1" readonly placeholder="点击右侧按钮生成">
+                <button class="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap" onclick="copyHaApiKey()">复制</button>
+                <button class="btn-primary text-xs px-3 py-1.5 whitespace-nowrap" onclick="generateHaApiKey()">生成</button>
+            </div>
+            <p class="text-[10px] text-text-muted">快速记录接口的认证凭证，生成后旧密钥立即失效</p>
         </div>
-        <div class="bg-base rounded-lg p-3 border border-border font-mono text-xs text-text-secondary space-y-1 overflow-x-auto">
-            <p class="text-text-muted"># 今日奶量</p>
-            <p>GET http://&lt;IP&gt;:8964/api/ha/status</p>
-            <p class="text-text-muted mt-1"># 今日喂养</p>
-            <p>GET http://&lt;IP&gt;:8964/api/ha/feed-today</p>
-            <p class="text-text-muted mt-1"># 上次喂养</p>
-            <p>GET http://&lt;IP&gt;:8964/api/ha/last-feed</p>
-            <p class="text-text-muted mt-1"># 今日排泄</p>
-            <p>GET http://&lt;IP&gt;:8964/api/ha/excrete-today</p>
-            <p class="text-text-muted mt-1"># 快速记录（需密钥）</p>
-            <p>POST http://&lt;IP&gt;:8964/api/ha/button/&lt;btn_id&gt;/press?api_key=&lt;KEY&gt;</p>
+
+        <!-- 步骤2: 填写地址 -->
+        <div class="bg-base rounded-lg p-3 border border-border space-y-2">
+            <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-bold">2</span>
+                <span class="text-sm text-text-primary font-medium">填写服务地址</span>
+            </div>
+            <div class="flex gap-2 items-end">
+                <div class="flex-1">
+                    <label class="text-text-muted text-[10px] mb-0.5 block">IP 地址</label>
+                    <input type="text" id="ha-host" class="input-field font-mono text-xs" placeholder="192.168.1.100" value="">
+                </div>
+                <div class="w-20">
+                    <label class="text-text-muted text-[10px] mb-0.5 block">端口</label>
+                    <input type="number" id="ha-port" class="input-field font-mono text-xs" value="8964">
+                </div>
+            </div>
+            <p class="text-[10px] text-text-muted">Baby Tracker 在局域网中的访问地址，HA 需能访问此地址</p>
+        </div>
+
+        <!-- 步骤3: 勾选实体 -->
+        <div class="bg-base rounded-lg p-3 border border-border space-y-2">
+            <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-bold">3</span>
+                <span class="text-sm text-text-primary font-medium">选择需要的实体</span>
+            </div>
+            <p class="text-[10px] text-text-muted">传感器（只读）和开关（可记录）按需勾选</p>
+
+            <div class="space-y-1">
+                <p class="text-xs text-text-secondary font-medium">传感器</p>
+                <label class="flex items-center gap-2 py-1 cursor-pointer">
+                    <input type="checkbox" class="ha-entity accent-accent" data-type="sensor" data-id="status" checked>
+                    <span class="text-xs text-text-primary">今日奶量概览</span>
+                    <span class="text-[10px] text-text-muted">— 奶量/次数/排泄/进度</span>
+                </label>
+                <label class="flex items-center gap-2 py-1 cursor-pointer">
+                    <input type="checkbox" class="ha-entity accent-accent" data-type="sensor" data-id="feed-today">
+                    <span class="text-xs text-text-primary">今日喂养详情</span>
+                    <span class="text-[10px] text-text-muted">— 每次喂养明细</span>
+                </label>
+                <label class="flex items-center gap-2 py-1 cursor-pointer">
+                    <input type="checkbox" class="ha-entity accent-accent" data-type="sensor" data-id="last-feed">
+                    <span class="text-xs text-text-primary">上次喂养</span>
+                    <span class="text-[10px] text-text-muted">— 时间/类型/量</span>
+                </label>
+                <label class="flex items-center gap-2 py-1 cursor-pointer">
+                    <input type="checkbox" class="ha-entity accent-accent" data-type="sensor" data-id="excrete-today">
+                    <span class="text-xs text-text-primary">今日排泄</span>
+                    <span class="text-[10px] text-text-muted">— 尿/便次数</span>
+                </label>
+            </div>
+
+            <div class="space-y-1">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs text-text-secondary font-medium">快速记录开关</p>
+                    <button class="text-[10px] text-accent hover:underline" onclick="haToggleAllButtons()">全选/反选</button>
+                </div>
+                <div id="ha-button-checks" class="space-y-1">
+                    <p class="text-[10px] text-text-muted">加载中...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 步骤4: 生成配置 -->
+        <div class="bg-base rounded-lg p-3 border border-border space-y-2">
+            <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-accent/20 text-accent text-xs flex items-center justify-center font-bold">4</span>
+                <span class="text-sm text-text-primary font-medium">生成 HA 配置</span>
+            </div>
+            <button class="btn-primary text-xs w-full py-2" onclick="generateHaYaml()">生成配置代码</button>
+            <div class="relative">
+                <pre id="ha-yaml-output" class="bg-surface border border-border rounded-lg p-3 font-mono text-[11px] text-text-secondary overflow-x-auto max-h-80 overflow-y-auto whitespace-pre leading-relaxed select-all"># 点击上方按钮生成配置</pre>
+                <button class="absolute top-2 right-2 bg-accent/20 hover:bg-accent/30 text-accent text-xs px-2.5 py-1 rounded-md transition-colors" onclick="copyHaYaml()">复制</button>
+            </div>
+            <p class="text-[10px] text-text-muted">将生成的 YAML 粘贴到 HA 的 configuration.yaml 中，重启 HA 或调用 reload 即可生效</p>
         </div>
     </div>
 </div>

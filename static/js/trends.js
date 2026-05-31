@@ -9,6 +9,8 @@ let _trendsObserver = null;
 function initTrends() {
     const wd = document.getElementById('weight-date');
     if (wd) wd.value = new Date().toISOString().slice(0, 10);
+    const hd = document.getElementById('hour-chart-day');
+    if (hd) hd.value = new Date().toISOString().slice(0, 10);
     loadTrends();
 
     if (!_trendsObserver) {
@@ -319,12 +321,23 @@ function renderFeedChart() {
     });
 }
 
-// ── Hour Chart (Bar, 24h) ──────────────────────────────
+// ── Hour Chart (Bar, 24h, by day) ──────────────────────
 function renderHourChart() {
     const colors = getThemeColors();
-    const hours = trendsData.feed_hours;
+    const byDay = trendsData.feed_hours_by_day;
+    const allHours = trendsData.feed_hours;
 
     hourChartInstance = destroyChart(hourChartInstance);
+
+    const picker = document.getElementById('hour-chart-day');
+    const selectedDay = picker ? picker.value : '';
+
+    let hours;
+    if (!selectedDay || !byDay || byDay.length === 0) {
+        hours = allHours;
+    } else {
+        hours = byDay.filter(h => h.date === selectedDay);
+    }
 
     if (!hours || hours.length === 0) return;
 
@@ -388,7 +401,6 @@ function renderHourChart() {
                         font: { family: "'JetBrains Mono', monospace", size: 8 },
                         maxRotation: 0,
                         callback: function(value, index) {
-                            // 只显示 0, 6, 12, 18, 23
                             if ([0, 6, 12, 18, 23].includes(index)) return value + '时';
                             return '';
                         }
@@ -566,6 +578,14 @@ async function saveWeight() {
         loadTrends();
     } catch (e) {
         showToast(e.message);
+    }
+}
+
+function clearHourDay() {
+    const picker = document.getElementById('hour-chart-day');
+    if (picker) {
+        picker.value = '';
+        renderHourChart();
     }
 }
 

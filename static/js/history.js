@@ -143,10 +143,11 @@ function renderRecords(records, vaccineData, dateStr) {
     // 喂养/排泄/症状记录
     if (records && records.length > 0) {
         records.forEach(r => {
-            const typeClass = r.type === 'feed' ? 'badge-feed' : r.type === 'excrete' ? 'badge-excrete' : 'badge-symptom';
-            const iconColor = r.type === 'feed' ? 'text-blue-400' : r.type === 'excrete' ? 'text-amber-400' : 'text-red-400';
-            const bgColor = r.type === 'feed' ? 'bg-blue-500/10' : r.type === 'excrete' ? 'bg-amber-500/10' : 'bg-red-500/10';
-            const iconName = r.type === 'feed' ? 'droplets' : r.type === 'excrete' ? 'circle-dot' : 'heart-pulse';
+            const badgeMap = { feed: 'badge-feed', excrete: 'badge-excrete', symptom: 'badge-symptom', supplement: 'badge-supplement' };
+            const typeClass = badgeMap[r.type] || 'badge-symptom';
+            const bgMap = { feed: 'bg-blue-500/10', excrete: 'bg-amber-500/10', symptom: 'bg-red-500/10', supplement: 'bg-purple-500/10' };
+            const iconMap = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
+            const colorMap = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
 
             let detail = '';
             if (r.amount) detail += `${r.amount}ml`;
@@ -158,8 +159,8 @@ function renderRecords(records, vaccineData, dateStr) {
 
             items.push(`
             <div class="card flex items-center gap-3 py-3 px-4 fade-in">
-                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bgColor}">
-                    <i data-lucide="${iconName}" class="w-4 h-4 ${iconColor}"></i>
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bgMap[r.type] || bgMap.symptom}">
+                    <i data-lucide="${iconMap[r.type] || iconMap.symptom}" class="w-4 h-4 ${colorMap[r.type] || colorMap.symptom}"></i>
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">

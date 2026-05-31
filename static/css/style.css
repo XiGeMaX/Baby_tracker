@@ -166,6 +166,14 @@ body { -webkit-font-smoothing: antialiased; }
     background: rgba(202,138,4,0.1); color: #ca8a04;
     border-color: rgba(202,138,4,0.25);
 }
+.badge-supplement {
+    background: rgba(168,85,247,0.15); color: #c084fc;
+    border-color: rgba(168,85,247,0.3);
+}
+[data-theme="light"] .badge-supplement {
+    background: rgba(126,34,206,0.1); color: #7c3aed;
+    border-color: rgba(126,34,206,0.25);
+}
 
 /* ── Timeline ────────────────────────────────────────── */
 .timeline-line {
@@ -346,6 +354,30 @@ select.input-field {
 }
 select.input-field option {
     background: var(--c-surface); color: var(--c-text-primary);
+}
+
+.hour-day-picker {
+    font-family: inherit;
+    font-size: 10px;
+    color: var(--c-accent);
+    background: transparent;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.hour-day-picker::-webkit-calendar-picker-indicator {
+    display: none;
+}
+.hour-day-picker::-webkit-date-and-time-value {
+    text-align: start;
+}
+.hour-day-picker:invalid,
+.hour-day-picker[value=""] {
+    color: var(--c-text-muted);
 }
 
 /* ── Theme Toggle ────────────────────────────────────── */
