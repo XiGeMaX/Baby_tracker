@@ -134,6 +134,20 @@ def init_db():
             custom_due_date TEXT NOT NULL,
             UNIQUE(vaccine_name, dose_index)
         );
+        CREATE TABLE IF NOT EXISTS vaccine_plan_deleted (
+            vaccine_name TEXT NOT NULL,
+            dose_index INTEGER NOT NULL,
+            UNIQUE(vaccine_name, dose_index)
+        );
+        CREATE TABLE IF NOT EXISTS vaccine_custom_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vaccine_name TEXT NOT NULL,
+            dose_index INTEGER NOT NULL,
+            due_date TEXT NOT NULL,
+            note TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            UNIQUE(vaccine_name, dose_index)
+        );
         CREATE TABLE IF NOT EXISTS health_followup_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             label TEXT NOT NULL UNIQUE,
@@ -158,6 +172,18 @@ def init_db():
     # 迁移：babies 表添加 is_premature 列
     try:
         db.execute("ALTER TABLE babies ADD COLUMN is_premature INTEGER DEFAULT 0")
+    except Exception:
+        pass
+
+    # 迁移：records 表添加 food_unit 列（辅食计量单位）
+    try:
+        db.execute("ALTER TABLE records ADD COLUMN food_unit TEXT DEFAULT ''")
+    except Exception:
+        pass
+
+    # 迁移：quick_buttons 表添加 food_unit 列（辅食按钮预设单位）
+    try:
+        db.execute("ALTER TABLE quick_buttons ADD COLUMN food_unit TEXT DEFAULT ''")
     except Exception:
         pass
 
@@ -244,9 +270,10 @@ def _migrate_check_constraints(db):
                 temperature REAL,
                 note TEXT,
                 timestamp TEXT NOT NULL,
+                food_unit TEXT DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             )''')
-            cols = 'id,baby_id,user_id,type,sub_type,amount,duration,color,consistency,temperature,note,timestamp,created_at'
+            cols = 'id,baby_id,user_id,type,sub_type,amount,duration,color,consistency,temperature,note,timestamp,food_unit,created_at'
             db.execute(f"INSERT INTO records ({cols}) SELECT {cols} FROM _records_old")
             db.execute("DROP TABLE _records_old")
             db.execute("CREATE INDEX IF NOT EXISTS idx_records_baby_id ON records(baby_id)")
@@ -269,6 +296,7 @@ def _migrate_check_constraints(db):
                 amount REAL DEFAULT 0,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 is_active INTEGER NOT NULL DEFAULT 1,
+                food_unit TEXT DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
             )''')
             cols = 'id,type,sub_type,label,amount,sort_order,is_active,created_at'
@@ -622,8 +650,8 @@ def create_quick_button():
     # 将 >= sort_order 的已有按钮排序值全部 +1，避免冲突
     db.execute("UPDATE quick_buttons SET sort_order = sort_order + 1 WHERE sort_order >= ?", (sort_order,))
     cursor = db.execute(
-        "INSERT INTO quick_buttons (type, sub_type, label, amount, sort_order, is_active) VALUES (?, ?, ?, ?, ?, 1)",
-        (data['type'], data['sub_type'], data['label'], data.get('amount', 0), sort_order)
+        "INSERT INTO quick_buttons (type, sub_type, label, amount, sort_order, is_active, food_unit) VALUES (?, ?, ?, ?, ?, 1, ?)",
+        (data['type'], data['sub_type'], data['label'], data.get('amount', 0), sort_order, data.get('food_unit', ''))
     )
     db.commit()
     add_log('添加按钮', 'quick_button', cursor.lastrowid, data['label'])
@@ -641,7 +669,7 @@ def update_quick_button(btn_id):
     if not existing:
         return jsonify({'error': '按钮不存在'}), 404
 
-    all_fields = ['type', 'sub_type', 'label', 'amount', 'sort_order', 'is_active']
+    all_fields = ['type', 'sub_type', 'label', 'amount', 'sort_order', 'is_active', 'food_unit']
     updates = []
     params = []
     for f in all_fields:
@@ -718,9 +746,9 @@ def quick_record(btn_id):
     target_date = data.get('date')
 
     cursor = db.execute(
-        """INSERT INTO records (baby_id, user_id, type, sub_type, amount, timestamp)
-           VALUES (1, ?, ?, ?, ?, ?)""",
-        (u['id'], btn['type'], btn['sub_type'], btn['amount'] if btn['amount'] is not None else None, timestamp)
+        """INSERT INTO records (baby_id, user_id, type, sub_type, amount, timestamp, food_unit)
+           VALUES (1, ?, ?, ?, ?, ?, ?)""",
+        (u['id'], btn['type'], btn['sub_type'], btn['amount'] if btn['amount'] is not None else None, timestamp, btn['food_unit'] or '')
     )
     db.commit()
     add_log('快速记录', 'record', cursor.lastrowid, f"{btn['label']} @ {timestamp}")
@@ -791,12 +819,13 @@ def create_record():
     u = current_user()
     db = get_db()
     cursor = db.execute(
-        """INSERT INTO records (baby_id, user_id, type, sub_type, amount, duration, color, consistency, temperature, note, timestamp)
-           VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO records (baby_id, user_id, type, sub_type, amount, duration, color, consistency, temperature, note, timestamp, food_unit)
+           VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (u['id'], data['type'], data['sub_type'], data.get('amount'),
          data.get('duration'), data.get('color', ''), data.get('consistency', ''),
          data.get('temperature'), data.get('note', ''),
-         data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+         data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S')),
+         data.get('food_unit', ''))
     )
     db.commit()
     add_log('创建记录', 'record', cursor.lastrowid,
@@ -829,7 +858,7 @@ def update_record(record_id):
 
     # 构建变更详情
     changes = []
-    fields = ['type', 'sub_type', 'amount', 'duration', 'color', 'consistency', 'temperature', 'note', 'timestamp']
+    fields = ['type', 'sub_type', 'amount', 'duration', 'color', 'consistency', 'temperature', 'note', 'timestamp', 'food_unit']
     for f in fields:
         if f in data:
             old_val = str(existing[f] or '')
@@ -894,10 +923,12 @@ def _today_summary_data(db, target_date=None):
         (start, end)
     ).fetchall()
     feeds = [r for r in today_records if r['type'] == 'feed']
+    # 仅液态奶计入奶量统计（辅食有独立单位，不计入ml总量）
+    milk_feeds = [f for f in feeds if f['sub_type'] != 'solid_food']
     excretes = [r for r in today_records if r['type'] == 'excrete']
 
-    total_feed_ml = sum(f['amount'] or 0 for f in feeds)
-    feed_count = len(feeds)
+    total_feed_ml = sum(f['amount'] or 0 for f in milk_feeds)
+    feed_count = len(milk_feeds)
     target_ml = estimate['daily_target_ml']
     remaining_ml = max(0, target_ml - total_feed_ml)
 
@@ -916,7 +947,7 @@ def _today_summary_data(db, target_date=None):
     urine_count = sum(1 for e in excretes if e['sub_type'] in ('urine', 'both'))
     stool_count = sum(1 for e in excretes if e['sub_type'] in ('stool', 'both'))
 
-    last_feed = feeds[-1] if feeds else None
+    last_feed = milk_feeds[-1] if milk_feeds else (feeds[-1] if feeds else None)
     last_feed_time = last_feed['timestamp'] if last_feed else None
 
     recent = db.execute("SELECT * FROM records ORDER BY timestamp DESC LIMIT 5").fetchall()
@@ -1173,13 +1204,15 @@ def backup_export():
     # 导出所有数据表
     table_cols = {
         'babies': ['id', 'name', 'gender', 'birth_date', 'weight', 'is_premature', 'created_at'],
-        'records': ['id', 'baby_id', 'user_id', 'type', 'sub_type', 'amount', 'duration', 'color', 'consistency', 'temperature', 'note', 'timestamp', 'created_at'],
+        'records': ['id', 'baby_id', 'user_id', 'type', 'sub_type', 'amount', 'duration', 'color', 'consistency', 'temperature', 'note', 'timestamp', 'food_unit', 'created_at'],
         'settings': ['id', 'key', 'value', 'updated_at'],
         'users': ['id', 'username', 'password_hash', 'nickname', 'role', 'status', 'created_at'],
-        'quick_buttons': ['id', 'type', 'sub_type', 'label', 'amount', 'sort_order', 'is_active', 'created_at'],
+        'quick_buttons': ['id', 'type', 'sub_type', 'label', 'amount', 'sort_order', 'is_active', 'food_unit', 'created_at'],
         'weight_logs': ['id', 'baby_id', 'weight', 'recorded_date', 'note', 'created_at'],
         'vaccine_records': ['id', 'vaccine_name', 'dose_index', 'vaccinated_date', 'note', 'created_at'],
         'vaccine_plan_overrides': ['vaccine_name', 'dose_index', 'custom_due_date'],
+        'vaccine_plan_deleted': ['vaccine_name', 'dose_index'],
+        'vaccine_custom_plans': ['vaccine_name', 'dose_index', 'due_date', 'note'],
         'health_followup_records': ['id', 'label', 'completed_date', 'note', 'created_at'],
         'health_followup_overrides': ['label', 'custom_due_date'],
         'countdown_events': ['id', 'title', 'target_date', 'note', 'created_at'],
@@ -1228,7 +1261,7 @@ def backup_restore():
     restored_counts = {}
 
     # 恢复顺序：先恢复无外键依赖的表
-    restore_order = ['babies', 'users', 'settings', 'quick_buttons', 'records', 'weight_logs', 'vaccine_records', 'vaccine_plan_overrides', 'health_followup_records', 'health_followup_overrides', 'countdown_events']
+    restore_order = ['babies', 'users', 'settings', 'quick_buttons', 'records', 'weight_logs', 'vaccine_records', 'vaccine_plan_overrides', 'vaccine_plan_deleted', 'vaccine_custom_plans', 'health_followup_records', 'health_followup_overrides', 'countdown_events']
 
     for table in restore_order:
         if table not in backup['tables']:
@@ -1361,45 +1394,205 @@ def update_weight_log(log_id):
 
 @app.route('/api/stats/trends', methods=['GET'])
 def get_trends():
-    """获取趋势统计数据，默认最近14天"""
+    """获取趋势统计数据，支持按日/月/时维度聚合"""
     days = request.args.get('days', 14, type=int)
     days = min(days, 90)
+    mode = request.args.get('mode', 'day')  # day / month / hour
     weight_days = request.args.get('weight_days', days, type=int)
     weight_days = min(weight_days, 365)
+    # 时模式可选：筛选具体日期（格式 YYYY-MM-DD）
+    hour_date = request.args.get('date', '').strip()
 
     db = get_db()
     today = date.today()
     start_date = today - timedelta(days=days-1)
     weight_start = today - timedelta(days=weight_days-1)
+    start_str = start_date.isoformat()
 
-    # 每日喂养量
-    feed_daily = db.execute("""
-        SELECT date(timestamp) as d,
-               COALESCE(SUM(amount), 0) as total_ml,
-               COUNT(*) as feed_count
-        FROM records
-        WHERE type='feed' AND timestamp >= ?
-        GROUP BY date(timestamp) ORDER BY d
-    """, (start_date.isoformat(),)).fetchall()
+    # 时模式且指定具体日期：仅查该日数据
+    use_hour_date = False
+    if mode == 'hour' and hour_date:
+        try:
+            datetime.strptime(hour_date, '%Y-%m-%d')
+            use_hour_date = True
+        except ValueError:
+            pass
 
-    # 每日排泄次数
-    excrete_daily = db.execute("""
-        SELECT date(timestamp) as d,
-               SUM(CASE WHEN sub_type IN ('urine','both') THEN 1 ELSE 0 END) as urine_count,
-               SUM(CASE WHEN sub_type IN ('stool','both') THEN 1 ELSE 0 END) as stool_count
-        FROM records
-        WHERE type='excrete' AND timestamp >= ?
-        GROUP BY date(timestamp) ORDER BY d
-    """, (start_date.isoformat(),)).fetchall()
+    # ── 按模式聚合数据 ──
+    if mode == 'hour':
+        # 时模式：按小时聚合
+        if use_hour_date:
+            feed_data = db.execute("""
+                SELECT CAST(strftime('%H', timestamp) AS INTEGER) as period,
+                       COALESCE(SUM(amount), 0) as total_ml,
+                       COUNT(*) as feed_count
+                FROM records
+                WHERE type='feed' AND sub_type != 'solid_food' AND date(timestamp) = ?
+                GROUP BY period ORDER BY period
+            """, (hour_date,)).fetchall()
+            excrete_data = db.execute("""
+                SELECT CAST(strftime('%H', timestamp) AS INTEGER) as period,
+                       SUM(CASE WHEN sub_type IN ('urine','both') THEN 1 ELSE 0 END) as urine_count,
+                       SUM(CASE WHEN sub_type IN ('stool','both') THEN 1 ELSE 0 END) as stool_count
+                FROM records
+                WHERE type='excrete' AND date(timestamp) = ?
+                GROUP BY period ORDER BY period
+            """, (hour_date,)).fetchall()
+            food_data = db.execute("""
+                SELECT CAST(strftime('%H', timestamp) AS INTEGER) as period,
+                       food_unit,
+                       COALESCE(SUM(amount), 0) as total_amount,
+                       COUNT(*) as food_count
+                FROM records
+                WHERE type='feed' AND sub_type='solid_food' AND date(timestamp) = ?
+                GROUP BY period, food_unit ORDER BY period
+            """, (hour_date,)).fetchall()
+        else:
+            feed_data = db.execute("""
+                SELECT CAST(strftime('%H', timestamp) AS INTEGER) as period,
+                       COALESCE(SUM(amount), 0) as total_ml,
+                       COUNT(*) as feed_count
+                FROM records
+                WHERE type='feed' AND sub_type != 'solid_food' AND timestamp >= ?
+                GROUP BY period ORDER BY period
+            """, (start_str,)).fetchall()
+            excrete_data = db.execute("""
+                SELECT CAST(strftime('%H', timestamp) AS INTEGER) as period,
+                       SUM(CASE WHEN sub_type IN ('urine','both') THEN 1 ELSE 0 END) as urine_count,
+                       SUM(CASE WHEN sub_type IN ('stool','both') THEN 1 ELSE 0 END) as stool_count
+                FROM records
+                WHERE type='excrete' AND timestamp >= ?
+                GROUP BY period ORDER BY period
+            """, (start_str,)).fetchall()
+            food_data = db.execute("""
+                SELECT CAST(strftime('%H', timestamp) AS INTEGER) as period,
+                       food_unit,
+                       COALESCE(SUM(amount), 0) as total_amount,
+                       COUNT(*) as food_count
+                FROM records
+                WHERE type='feed' AND sub_type='solid_food' AND timestamp >= ?
+                GROUP BY period, food_unit ORDER BY period
+            """, (start_str,)).fetchall()
 
-    # 喂养时段分布
+        # 填充 0-23 小时
+        feed_map = {r['period']: dict(r) for r in feed_data}
+        excrete_map = {r['period']: dict(r) for r in excrete_data}
+        periods = list(range(24))
+        labels = [f'{h:02d}:00' for h in periods]
+        daily_data = []
+        for h in periods:
+            daily_data.append({
+                'label': labels[h],
+                'feed_ml': feed_map.get(h, {}).get('total_ml', 0),
+                'feed_count': feed_map.get(h, {}).get('feed_count', 0),
+                'urine_count': excrete_map.get(h, {}).get('urine_count', 0),
+                'stool_count': excrete_map.get(h, {}).get('stool_count', 0),
+            })
+
+    elif mode == 'month':
+        # 月模式：按月聚合
+        feed_data = db.execute("""
+            SELECT strftime('%Y-%m', timestamp) as period,
+                   COALESCE(SUM(amount), 0) as total_ml,
+                   COUNT(*) as feed_count
+            FROM records
+            WHERE type='feed' AND sub_type != 'solid_food' AND timestamp >= ?
+            GROUP BY period ORDER BY period
+        """, (start_str,)).fetchall()
+
+        excrete_data = db.execute("""
+            SELECT strftime('%Y-%m', timestamp) as period,
+                   SUM(CASE WHEN sub_type IN ('urine','both') THEN 1 ELSE 0 END) as urine_count,
+                   SUM(CASE WHEN sub_type IN ('stool','both') THEN 1 ELSE 0 END) as stool_count
+            FROM records
+            WHERE type='excrete' AND timestamp >= ?
+            GROUP BY period ORDER BY period
+        """, (start_str,)).fetchall()
+
+        food_data = db.execute("""
+            SELECT strftime('%Y-%m', timestamp) as period,
+                   food_unit,
+                   COALESCE(SUM(amount), 0) as total_amount,
+                   COUNT(*) as food_count
+            FROM records
+            WHERE type='feed' AND sub_type='solid_food' AND timestamp >= ?
+            GROUP BY period, food_unit ORDER BY period
+        """, (start_str,)).fetchall()
+
+        feed_map = {r['period']: dict(r) for r in feed_data}
+        excrete_map = {r['period']: dict(r) for r in excrete_data}
+        # 生成月份列表
+        months = []
+        cur = date(start_date.year, start_date.month, 1)
+        end_month = date(today.year, today.month, 1)
+        while cur <= end_month:
+            months.append(cur.strftime('%Y-%m'))
+            if cur.month == 12:
+                cur = date(cur.year + 1, 1, 1)
+            else:
+                cur = date(cur.year, cur.month + 1, 1)
+        daily_data = []
+        for m in months:
+            daily_data.append({
+                'label': m,
+                'feed_ml': feed_map.get(m, {}).get('total_ml', 0),
+                'feed_count': feed_map.get(m, {}).get('feed_count', 0),
+                'urine_count': excrete_map.get(m, {}).get('urine_count', 0),
+                'stool_count': excrete_map.get(m, {}).get('stool_count', 0),
+            })
+
+    else:
+        # 日模式（默认）
+        feed_data = db.execute("""
+            SELECT date(timestamp) as period,
+                   COALESCE(SUM(amount), 0) as total_ml,
+                   COUNT(*) as feed_count
+            FROM records
+            WHERE type='feed' AND sub_type != 'solid_food' AND timestamp >= ?
+            GROUP BY period ORDER BY period
+        """, (start_str,)).fetchall()
+
+        excrete_data = db.execute("""
+            SELECT date(timestamp) as period,
+                   SUM(CASE WHEN sub_type IN ('urine','both') THEN 1 ELSE 0 END) as urine_count,
+                   SUM(CASE WHEN sub_type IN ('stool','both') THEN 1 ELSE 0 END) as stool_count
+            FROM records
+            WHERE type='excrete' AND timestamp >= ?
+            GROUP BY period ORDER BY period
+        """, (start_str,)).fetchall()
+
+        food_data = db.execute("""
+            SELECT date(timestamp) as period,
+                   food_unit,
+                   COALESCE(SUM(amount), 0) as total_amount,
+                   COUNT(*) as food_count
+            FROM records
+            WHERE type='feed' AND sub_type='solid_food' AND timestamp >= ?
+            GROUP BY period, food_unit ORDER BY period
+        """, (start_str,)).fetchall()
+
+        feed_map = {r['period']: dict(r) for r in feed_data}
+        excrete_map = {r['period']: dict(r) for r in excrete_data}
+        daily_data = []
+        for i in range(days):
+            d = (start_date + timedelta(days=i)).isoformat()
+            daily_data.append({
+                'label': d,
+                'date': d,
+                'feed_ml': feed_map.get(d, {}).get('total_ml', 0),
+                'feed_count': feed_map.get(d, {}).get('feed_count', 0),
+                'urine_count': excrete_map.get(d, {}).get('urine_count', 0),
+                'stool_count': excrete_map.get(d, {}).get('stool_count', 0),
+            })
+
+    # 喂养时段分布（始终保留，用于时段图表）
     feed_hours = db.execute("""
         SELECT CAST(strftime('%H', timestamp) AS INTEGER) as hour,
                COUNT(*) as count
         FROM records
         WHERE type='feed' AND timestamp >= ?
         GROUP BY hour ORDER BY hour
-    """, (start_date.isoformat(),)).fetchall()
+    """, (start_str,)).fetchall()
 
     feed_hours_by_day = db.execute("""
         SELECT DATE(timestamp) as date,
@@ -1408,7 +1601,7 @@ def get_trends():
         FROM records
         WHERE type='feed' AND timestamp >= ?
         GROUP BY date, hour ORDER BY date, hour
-    """, (start_date.isoformat(),)).fetchall()
+    """, (start_str,)).fetchall()
 
     # 体重记录（独立时间范围，最大1年）
     weights = db.execute("""
@@ -1424,29 +1617,24 @@ def get_trends():
     estimate = estimate_milk(dict(baby) if baby else None, settings_dict)
     target_ml = estimate['daily_target_ml']
 
-    # 填充空白天
-    feed_map = {r['d']: dict(r) for r in feed_daily}
-    excrete_map = {r['d']: dict(r) for r in excrete_daily}
-
-    daily_data = []
-    for i in range(days):
-        d = (start_date + timedelta(days=i)).isoformat()
-        daily_data.append({
-            'date': d,
-            'feed_ml': feed_map.get(d, {}).get('total_ml', 0),
-            'feed_count': feed_map.get(d, {}).get('feed_count', 0),
-            'urine_count': excrete_map.get(d, {}).get('urine_count', 0),
-            'stool_count': excrete_map.get(d, {}).get('stool_count', 0),
-        })
+    # 辅食数据按单位分组
+    food_by_unit = {}
+    for r in food_data:
+        unit = r['food_unit'] or 'g'
+        if unit not in food_by_unit:
+            food_by_unit[unit] = []
+        food_by_unit[unit].append(dict(r))
 
     return jsonify({
         'daily': daily_data,
         'feed_hours': [dict(r) for r in feed_hours],
         'feed_hours_by_day': [dict(r) for r in feed_hours_by_day],
+        'food_by_unit': food_by_unit,
         'weights': [dict(r) for r in weights],
         'target_ml': target_ml,
         'days': days,
         'weight_days': weight_days,
+        'mode': mode,
     })
 
 
@@ -1561,6 +1749,16 @@ def vaccine_schedule():
     for o in overrides:
         override_map[(o['vaccine_name'], o['dose_index'])] = o['custom_due_date']
 
+    # 获取已删除的预设项
+    deleted_rows = db.execute("SELECT * FROM vaccine_plan_deleted").fetchall()
+    deleted_set = {(d['vaccine_name'], d['dose_index']) for d in deleted_rows}
+
+    # 获取自定义疫苗计划
+    custom_plans = db.execute("SELECT * FROM vaccine_custom_plans ORDER BY due_date").fetchall()
+    custom_plan_map = {}
+    for cp in custom_plans:
+        custom_plan_map[(cp['vaccine_name'], cp['dose_index'])] = dict(cp)
+
     # 互斥疫苗：如果已接种灭活则隐藏减毒，反之亦然
     # 乙脑：减毒(JE-L) vs 灭活(JE-I) 二选一
     # 甲肝：减毒(HepA-L) vs 灭活(HepA-I) 二选一
@@ -1572,6 +1770,9 @@ def vaccine_schedule():
     # 默认显示减毒版；如果已接种灭活版则显示灭活版隐藏减毒版
     schedule_filtered = []
     for v in VACCINE_SCHEDULE:
+        # 排除已删除的预设项
+        if (v['name'], v['dose_index']) in deleted_set:
+            continue
         # 乙脑互斥
         if v['short'] == 'JE-L' and je_inactivated_done:
             continue
@@ -1604,27 +1805,55 @@ def vaccine_schedule():
         }
         schedule.append(entry)
 
-    # 添加自定义疫苗记录（不在标准计划中的）
+    # 添加自定义疫苗计划（未接种的）
     standard_names = {v['name'] for v in VACCINE_SCHEDULE}
-    custom_records = [r for r in records if r['vaccine_name'] not in standard_names]
-    # 按疫苗名分组
-    custom_groups = {}
-    for r in custom_records:
-        if r['vaccine_name'] not in custom_groups:
-            custom_groups[r['vaccine_name']] = []
-        custom_groups[r['vaccine_name']].append(dict(r))
-    for name, recs in custom_groups.items():
-        for rec in recs:
+    for (cp_name, cp_dose), cp in custom_plan_map.items():
+        key = (cp_name, cp_dose)
+        rec = record_map.get(key)
+        if rec:
+            # 已接种
             schedule.append({
-                'name': name,
+                'name': cp_name,
                 'short': 'Custom',
                 'age_months': 0,
-                'dose_index': rec['dose_index'],
+                'dose_index': cp_dose,
                 'note': '',
                 'due_date': rec['vaccinated_date'],
                 'status': 'done',
                 'vaccinated_date': rec['vaccinated_date'],
                 'note_text': rec['note'],
+                'is_custom': True,
+            })
+        else:
+            # 未接种的计划
+            due_date = cp['due_date']
+            schedule.append({
+                'name': cp_name,
+                'short': 'Custom',
+                'age_months': 0,
+                'dose_index': cp_dose,
+                'note': cp.get('note', ''),
+                'due_date': due_date,
+                'default_due_date': due_date,
+                'status': 'overdue' if due_date <= today.isoformat() else 'upcoming',
+                'vaccinated_date': None,
+                'note_text': cp.get('note', ''),
+                'is_custom': True,
+            })
+
+    # 添加自定义疫苗记录（不在标准计划也不在自定义计划中的已接种记录）
+    for r in records:
+        if r['vaccine_name'] not in standard_names and (r['vaccine_name'], r['dose_index']) not in custom_plan_map:
+            schedule.append({
+                'name': r['vaccine_name'],
+                'short': 'Custom',
+                'age_months': 0,
+                'dose_index': r['dose_index'],
+                'note': '',
+                'due_date': r['vaccinated_date'],
+                'status': 'done',
+                'vaccinated_date': r['vaccinated_date'],
+                'note_text': r['note'],
                 'is_custom': True,
             })
 
@@ -1702,11 +1931,90 @@ def update_vaccine_plan_date():
     rec = db.execute("SELECT 1 FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?", (vaccine_name, dose_index)).fetchone()
     if rec:
         return jsonify({'error': '已接种的项目不能修改计划日期'}), 400
-    db.execute("INSERT OR REPLACE INTO vaccine_plan_overrides (vaccine_name, dose_index, custom_due_date) VALUES (?, ?, ?)",
-               (vaccine_name, dose_index, custom_due_date))
+    # 自定义疫苗计划更新 vaccine_custom_plans，预设疫苗更新 vaccine_plan_overrides
+    custom = db.execute("SELECT 1 FROM vaccine_custom_plans WHERE vaccine_name = ? AND dose_index = ?", (vaccine_name, dose_index)).fetchone()
+    if custom:
+        db.execute("UPDATE vaccine_custom_plans SET due_date = ? WHERE vaccine_name = ? AND dose_index = ?",
+                   (custom_due_date, vaccine_name, dose_index))
+    else:
+        db.execute("INSERT OR REPLACE INTO vaccine_plan_overrides (vaccine_name, dose_index, custom_due_date) VALUES (?, ?, ?)",
+                   (vaccine_name, dose_index, custom_due_date))
     db.commit()
     add_log('修改计划日期', 'vaccine', None, f"{vaccine_name}第{dose_index}剂 → {custom_due_date}")
     return jsonify({'message': '计划日期已更新'})
+
+
+@app.route('/api/vaccine/plan', methods=['DELETE'])
+def vaccine_plan_delete():
+    """删除预设疫苗计划项"""
+    if not is_approved():
+        return jsonify({'error': '无权限'}), 403
+    data = request.get_json()
+    vaccine_name = data.get('vaccine_name', '').strip()
+    dose_index = data.get('dose_index')
+    if not vaccine_name or not dose_index:
+        return jsonify({'error': '参数不完整'}), 400
+    db = get_db()
+    rec = db.execute("SELECT 1 FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?", (vaccine_name, dose_index)).fetchone()
+    if rec:
+        return jsonify({'error': '已接种的项目不能删除'}), 400
+    db.execute("INSERT OR IGNORE INTO vaccine_plan_deleted (vaccine_name, dose_index) VALUES (?, ?)", (vaccine_name, dose_index))
+    db.execute("DELETE FROM vaccine_plan_overrides WHERE vaccine_name = ? AND dose_index = ?", (vaccine_name, dose_index))
+    db.commit()
+    add_log('删除疫苗计划', 'vaccine', None, f"{vaccine_name}第{dose_index}剂")
+    return jsonify({'message': '已删除'})
+
+
+@app.route('/api/vaccine/custom-plan', methods=['POST'])
+def vaccine_custom_plan_add():
+    """添加自定义疫苗计划（支持多针剂多日期）"""
+    if not is_approved():
+        return jsonify({'error': '无权限'}), 403
+    data = request.get_json()
+    vaccine_name = data.get('vaccine_name', '').strip()
+    doses = data.get('doses', [])
+    if not vaccine_name:
+        return jsonify({'error': '请输入疫苗名称'}), 400
+    if not doses:
+        return jsonify({'error': '请至少添加一剂'}), 400
+    db = get_db()
+    today_str = date.today().isoformat()
+    added_count = 0
+    for dose in doses:
+        dose_index = dose.get('dose_index', 1)
+        due_date = dose.get('due_date', '')
+        note = dose.get('note', '')
+        if not due_date:
+            continue
+        if due_date == today_str:
+            db.execute(
+                "INSERT OR REPLACE INTO vaccine_records (vaccine_name, dose_index, vaccinated_date, note) VALUES (?, ?, ?, ?)",
+                (vaccine_name, dose_index, due_date, note)
+            )
+        else:
+            db.execute(
+                "INSERT OR REPLACE INTO vaccine_custom_plans (vaccine_name, dose_index, due_date, note) VALUES (?, ?, ?, ?)",
+                (vaccine_name, dose_index, due_date, note)
+            )
+        added_count += 1
+    db.commit()
+    add_log('添加疫苗计划', 'vaccine', None, f"{vaccine_name} {added_count}剂")
+    return jsonify({'message': f'已添加 {added_count} 剂'})
+
+
+@app.route('/api/vaccine/custom-plan', methods=['DELETE'])
+def vaccine_custom_plan_delete():
+    """删除自定义疫苗计划项"""
+    if not is_approved():
+        return jsonify({'error': '无权限'}), 403
+    data = request.get_json()
+    vaccine_name = data.get('vaccine_name', '').strip()
+    dose_index = data.get('dose_index')
+    db = get_db()
+    db.execute("DELETE FROM vaccine_custom_plans WHERE vaccine_name = ? AND dose_index = ?", (vaccine_name, dose_index))
+    db.commit()
+    add_log('删除自定义疫苗计划', 'vaccine', None, f"{vaccine_name}第{dose_index}剂")
+    return jsonify({'message': '已删除'})
 
 
 @app.route('/api/vaccine/dates', methods=['GET'])
@@ -1735,9 +2043,15 @@ def vaccine_dates():
     for o in overrides:
         override_map[(o['vaccine_name'], o['dose_index'])] = o['custom_due_date']
 
+    # 获取已删除的预设项
+    deleted_rows = db.execute("SELECT * FROM vaccine_plan_deleted").fetchall()
+    deleted_set = {(d['vaccine_name'], d['dose_index']) for d in deleted_rows}
+
     # 未接种：逾期(黑点) + 未到(红点)
     for v in VACCINE_SCHEDULE:
         key = (v['name'], v['dose_index'])
+        if key in deleted_set:
+            continue
         rec = db.execute("SELECT 1 FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?", key).fetchone()
         if not rec:
             default_due = (birth + timedelta(days=int(v['age_months'] * 30.44))).strftime('%Y-%m-%d')
@@ -1746,6 +2060,17 @@ def vaccine_dates():
                 result['overdue'].append(due_date)
             else:
                 result['upcoming'].append(due_date)
+
+    # 自定义疫苗计划日期
+    custom_plans = db.execute("SELECT * FROM vaccine_custom_plans").fetchall()
+    for cp in custom_plans:
+        rec = db.execute("SELECT 1 FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?",
+                         (cp['vaccine_name'], cp['dose_index'])).fetchone()
+        if not rec:
+            if cp['due_date'] <= today.isoformat():
+                result['overdue'].append(cp['due_date'])
+            else:
+                result['upcoming'].append(cp['due_date'])
 
     return jsonify(result)
 
@@ -1783,8 +2108,13 @@ def vaccine_day_records():
     for o in overrides:
         override_map[(o['vaccine_name'], o['dose_index'])] = o['custom_due_date']
 
+    deleted_rows = db.execute("SELECT * FROM vaccine_plan_deleted").fetchall()
+    deleted_set = {(d['vaccine_name'], d['dose_index']) for d in deleted_rows}
+
     for v in VACCINE_SCHEDULE:
         key = (v['name'], v['dose_index'])
+        if key in deleted_set:
+            continue
         rec = db.execute("SELECT 1 FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?", key).fetchone()
         if not rec:
             default_due = (birth + timedelta(days=int(v['age_months'] * 30.44))).strftime('%Y-%m-%d')
@@ -1796,6 +2126,19 @@ def vaccine_day_records():
                     'due_date': due_date,
                     'status': 'overdue' if due_date <= today.isoformat() else 'upcoming'
                 })
+
+    # 自定义疫苗计划
+    custom_plans = db.execute("SELECT * FROM vaccine_custom_plans WHERE due_date = ?", (rec_date,)).fetchall()
+    for cp in custom_plans:
+        rec = db.execute("SELECT 1 FROM vaccine_records WHERE vaccine_name = ? AND dose_index = ?",
+                         (cp['vaccine_name'], cp['dose_index'])).fetchone()
+        if not rec:
+            result['planned'].append({
+                'name': cp['vaccine_name'],
+                'dose_index': cp['dose_index'],
+                'due_date': cp['due_date'],
+                'status': 'overdue' if cp['due_date'] <= today.isoformat() else 'upcoming'
+            })
 
     return jsonify(result)
 
@@ -2149,8 +2492,10 @@ def ha_feed_today():
     start = f"{today_str} 00:00:00"
     end = f"{today_str} 23:59:59"
     feeds = db.execute("SELECT * FROM records WHERE timestamp >= ? AND timestamp <= ? AND type = 'feed' ORDER BY timestamp", (start, end)).fetchall()
-    total_ml = sum(f['amount'] or 0 for f in feeds)
-    return jsonify({'state': str(round(total_ml)), 'attributes': {'unit_of_measurement': 'ml', 'friendly_name': '今日喂养总量', 'icon': 'mdi:baby-bottle-outline', 'feed_count': len(feeds), 'feeds': [dict(f) for f in feeds]}})
+    # 仅液态奶计入ml总量（辅食有独立单位）
+    milk_feeds = [f for f in feeds if f['sub_type'] != 'solid_food']
+    total_ml = sum(f['amount'] or 0 for f in milk_feeds)
+    return jsonify({'state': str(round(total_ml)), 'attributes': {'unit_of_measurement': 'ml', 'friendly_name': '今日喂养总量', 'icon': 'mdi:baby-bottle-outline', 'feed_count': len(milk_feeds), 'feeds': [dict(f) for f in feeds]}})
 
 
 @app.route('/api/ha/last-feed', methods=['GET'])
@@ -2159,7 +2504,7 @@ def ha_last_feed():
     feed = db.execute("SELECT * FROM records WHERE type = 'feed' ORDER BY timestamp DESC LIMIT 1").fetchone()
     if not feed:
         return jsonify({'state': 'unknown', 'attributes': {'friendly_name': '上次喂养', 'icon': 'mdi:baby-bottle'}})
-    return jsonify({'state': feed['timestamp'], 'attributes': {'friendly_name': '上次喂养', 'icon': 'mdi:baby-bottle', 'sub_type': feed['sub_type'], 'amount_ml': feed['amount'], 'duration_min': feed['duration']}})
+    return jsonify({'state': feed['timestamp'], 'attributes': {'friendly_name': '上次喂养', 'icon': 'mdi:baby-bottle', 'sub_type': feed['sub_type'], 'amount_ml': feed['amount'], 'duration_min': feed['duration'], 'food_unit': feed['food_unit'] or ''}})
 
 
 @app.route('/api/ha/excrete-today', methods=['GET'])

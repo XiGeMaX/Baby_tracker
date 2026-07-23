@@ -271,12 +271,24 @@
                 <label class="text-text-muted text-xs mb-1 block">自定义子类型名称</label>
                 <input type="text" id="custom-subtype-input" class="input-field" placeholder="如：维D滴剂">
             </div>
+            <div id="food-unit-wrap" class="hidden">
+                <label class="text-text-muted text-xs mb-1 block">辅食计量单位</label>
+                <div class="flex gap-2 items-center">
+                    <select id="btn-food-unit" class="input-field flex-1" onchange="onFoodUnitChange()">
+                        <option value="g">g (克)</option>
+                        <option value="勺">勺</option>
+                        <option value="块">块</option>
+                        <option value="_custom">自定义...</option>
+                    </select>
+                    <input type="text" id="btn-food-unit-custom" class="input-field flex-1 hidden" placeholder="如：ml、份">
+                </div>
+            </div>
             <div>
                 <label class="text-text-muted text-xs mb-1 block">显示标签</label>
                 <input type="text" id="new-btn-label" class="input-field" placeholder="如：配方奶 90ml">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">预设量 (ml，0=不预设)</label>
+                <label id="btn-amount-label" class="text-text-muted text-xs mb-1 block">预设量 (ml，0=不预设)</label>
                 <input type="number" id="new-btn-amount" class="input-field font-mono" value="0" min="0">
             </div>
             <div>

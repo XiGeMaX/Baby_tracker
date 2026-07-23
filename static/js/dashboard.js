@@ -157,7 +157,11 @@ function renderRecentRecords(records) {
 
 function buildRecordDetail(r) {
     const parts = [];
-    if (r.amount) parts.push(`${r.amount}ml`);
+    if (r.amount) {
+        // 辅食使用自定义单位，其他默认 ml
+        const unit = (r.sub_type === 'solid_food' && r.food_unit) ? r.food_unit : 'ml';
+        parts.push(`${r.amount}${unit}`);
+    }
     if (r.duration) parts.push(`${r.duration}分钟`);
     if (r.temperature) parts.push(`${r.temperature}°C`);
     if (r.color) parts.push(r.color);

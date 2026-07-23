@@ -79,6 +79,7 @@ const SUB_TYPE_LABELS = {
     breast_right: '母乳(右)',
     formula: '配方奶',
     water: '水',
+    solid_food: '辅食',
     urine: '尿',
     stool: '便',
     both: '尿+便',
@@ -93,6 +94,9 @@ const SUB_TYPE_LABELS = {
     dha: 'DHA',
     probiotics: '益生菌'
 };
+
+// 预设辅食计量单位
+const FOOD_UNIT_PRESETS = ['g', '勺', '块'];
 
 function typeLabel(type, subType) {
     if (subType && SUB_TYPE_LABELS[subType]) return SUB_TYPE_LABELS[subType];
@@ -155,6 +159,7 @@ const EDIT_SUB_TYPES = {
         { value: 'breast_right', label: '母乳(右)' },
         { value: 'formula', label: '配方奶' },
         { value: 'water', label: '水' },
+        { value: 'solid_food', label: '辅食' },
         { value: '_custom', label: '自定义...' },
     ],
     excrete: [
@@ -224,8 +229,20 @@ function _showEditModal(r) {
                 <label class="text-text-muted text-xs mb-1 block">自定义子类型名称</label>
                 <input type="text" id="edit-custom-subtype-input" class="input-field" placeholder="如：维D滴剂">
             </div>
+            <div id="edit-food-unit-wrap" class="hidden">
+                <label class="text-text-muted text-xs mb-1 block">辅食计量单位</label>
+                <div class="flex gap-2 items-center">
+                    <select id="edit-food-unit" class="input-field flex-1" onchange="_onEditFoodUnitChange()">
+                        <option value="g">g (克)</option>
+                        <option value="勺">勺</option>
+                        <option value="块">块</option>
+                        <option value="_custom">自定义...</option>
+                    </select>
+                    <input type="text" id="edit-food-unit-custom" class="input-field flex-1 hidden" placeholder="如：ml、份" oninput="_updateAmountLabel()">
+                </div>
+            </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">量 (ml)</label>
+                <label id="edit-amount-label" class="text-text-muted text-xs mb-1 block">量 (ml)</label>
                 <input type="number" id="edit-amount" class="input-field font-mono" value="${esc(r.amount || '')}" min="0">
             </div>
             <div>
@@ -270,7 +287,9 @@ function _showEditModal(r) {
     if (typeof fabClose === 'function') fabClose();
 
     window._editCurrentSubType = r.sub_type;
+    window._editCurrentFoodUnit = r.food_unit || '';
     _onEditTypeChange();
+    _syncFoodUnitUI();
 }
 
 function _onEditTypeChange() {
@@ -293,6 +312,8 @@ function _onEditTypeChange() {
             ci.value = currentSub;
         }
     }
+    _syncFoodUnitUI();
+    _updateAmountLabel();
 }
 
 function _onEditSubtypeChange() {
@@ -302,6 +323,74 @@ function _onEditSubtypeChange() {
     if (sel.value === '_custom') {
         const ci = document.getElementById('edit-custom-subtype-input');
         if (ci) ci.focus();
+    }
+    _syncFoodUnitUI();
+    _updateAmountLabel();
+}
+
+// 同步辅食计量单位 UI 显示
+function _syncFoodUnitUI() {
+    const sel = document.getElementById('edit-subtype');
+    if (!sel) return;
+    const isSolid = sel.value === 'solid_food';
+    const wrap = document.getElementById('edit-food-unit-wrap');
+    if (wrap) wrap.classList.toggle('hidden', !isSolid);
+    if (isSolid) {
+        const unitSel = document.getElementById('edit-food-unit');
+        const customInput = document.getElementById('edit-food-unit-custom');
+        const curUnit = window._editCurrentFoodUnit || '';
+        if (unitSel && customInput) {
+            if (FOOD_UNIT_PRESETS.includes(curUnit)) {
+                unitSel.value = curUnit;
+                customInput.classList.add('hidden');
+                customInput.value = '';
+            } else if (curUnit) {
+                unitSel.value = '_custom';
+                customInput.classList.remove('hidden');
+                customInput.value = curUnit;
+            } else {
+                unitSel.value = 'g';
+                customInput.classList.add('hidden');
+                customInput.value = '';
+            }
+        }
+    }
+}
+
+// 切换辅食单位自定义输入框显示
+function _onEditFoodUnitChange() {
+    const unitSel = document.getElementById('edit-food-unit');
+    const customInput = document.getElementById('edit-food-unit-custom');
+    if (!unitSel || !customInput) return;
+    if (unitSel.value === '_custom') {
+        customInput.classList.remove('hidden');
+        customInput.focus();
+    } else {
+        customInput.classList.add('hidden');
+        customInput.value = '';
+    }
+    _updateAmountLabel();
+}
+
+// 根据子类型与单位更新"量"标签
+function _updateAmountLabel() {
+    const sel = document.getElementById('edit-subtype');
+    const label = document.getElementById('edit-amount-label');
+    if (!sel || !label) return;
+    if (sel.value === 'solid_food') {
+        const unitSel = document.getElementById('edit-food-unit');
+        const customInput = document.getElementById('edit-food-unit-custom');
+        let unit = 'g';
+        if (unitSel) {
+            if (unitSel.value === '_custom' && customInput && customInput.value) {
+                unit = customInput.value;
+            } else if (unitSel.value !== '_custom') {
+                unit = unitSel.value;
+            }
+        }
+        label.textContent = `量 (${unit})`;
+    } else {
+        label.textContent = '量 (ml)';
     }
 }
 
@@ -322,6 +411,23 @@ async function _saveEditRecord(id) {
             return;
         }
     }
+    // 解析辅食计量单位
+    let foodUnit = '';
+    if (subType === 'solid_food') {
+        const unitSel = document.getElementById('edit-food-unit');
+        const customInput = document.getElementById('edit-food-unit-custom');
+        if (unitSel && unitSel.value === '_custom') {
+            foodUnit = customInput ? customInput.value.trim() : '';
+            if (!foodUnit) {
+                showToast('请输入或选择辅食计量单位');
+                return;
+            }
+        } else if (unitSel) {
+            foodUnit = unitSel.value;
+        } else {
+            foodUnit = 'g';
+        }
+    }
     const data = {
         type: document.getElementById('edit-type').value,
         sub_type: subType,
@@ -334,6 +440,7 @@ async function _saveEditRecord(id) {
         timestamp: (document.getElementById('edit-date').value && document.getElementById('edit-time').value)
             ? document.getElementById('edit-date').value + ' ' + document.getElementById('edit-time').value + ':00'
             : null,
+        food_unit: foodUnit,
         _date: getLocalDate(),
     };
 

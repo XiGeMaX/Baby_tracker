@@ -120,6 +120,7 @@
         <h3 id="plan-date-modal-title" class="text-sm font-medium text-text-secondary mb-3">修改计划日期</h3>
         <input type="hidden" id="pdm-name">
         <input type="hidden" id="pdm-dose">
+        <input type="hidden" id="pdm-custom">
         <div class="space-y-3">
             <div>
                 <div class="flex items-center justify-between mb-1">
@@ -132,8 +133,9 @@
         <div class="mt-4">
             <button class="btn-primary w-full text-sm" onclick="planDateToRecord()">记录接种</button>
         </div>
-        <div class="mt-2">
-            <button class="btn-secondary w-full text-sm" onclick="closePlanDateModal()">取消</button>
+        <div class="flex gap-2 mt-2">
+            <button class="btn-secondary flex-1 text-sm" onclick="closePlanDateModal()">取消</button>
+            <button class="flex-1 text-sm px-3 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors" onclick="deleteVaccinePlan()">删除计划</button>
         </div>
     </div>
 </div>
@@ -188,7 +190,7 @@
 
 <!-- 自定义疫苗弹窗 -->
 <div id="add-vaccine-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
+    <div class="bg-surface border border-border rounded-xl p-6 w-96 max-w-[90vw] max-h-[80vh] overflow-y-auto">
         <h3 class="text-sm font-medium text-text-secondary mb-3">添加自定义疫苗</h3>
         <div class="space-y-3">
             <div>
@@ -196,16 +198,9 @@
                 <input type="text" id="av-name" class="input-field" placeholder="如：水痘疫苗">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">第几剂</label>
-                <input type="number" id="av-dose" class="input-field font-mono" value="1" min="1">
-            </div>
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">接种日期</label>
-                <input type="date" id="av-date" class="input-field font-mono">
-            </div>
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">备注</label>
-                <input type="text" id="av-note" class="input-field" placeholder="如：自费">
+                <label class="text-text-muted text-xs mb-1 block">剂次计划 <span class="text-[9px] text-text-muted">(当天日期=已接种, 其他=计划中)</span></label>
+                <div id="av-doses-container" class="space-y-2"></div>
+                <button onclick="addDoseRow()" class="text-xs text-accent hover:underline mt-1">+ 添加剂次</button>
             </div>
         </div>
         <div class="flex gap-2 mt-4">

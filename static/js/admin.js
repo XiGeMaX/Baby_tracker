@@ -5,6 +5,7 @@ const SUB_TYPES = {
         { value: 'breast_right', label: '母乳(右)' },
         { value: 'formula', label: '配方奶' },
         { value: 'water', label: '水' },
+        { value: 'solid_food', label: '辅食' },
         { value: '_custom', label: '自定义...' },
     ],
     excrete: [
@@ -173,7 +174,7 @@ function renderButtons(buttons) {
                 <div class="flex items-center gap-2">
                     <span class="text-sm text-text-primary">${esc(b.label)}</span>
                     <span class="text-xs ${typeColors[b.type]}">${typeLabels[b.type]}</span>
-                    ${b.amount ? `<span class="text-xs text-text-muted font-mono">${b.amount}ml</span>` : ''}
+                    ${b.amount ? `<span class="text-xs text-text-muted font-mono">${b.amount}${b.sub_type === 'solid_food' && b.food_unit ? esc(b.food_unit) : 'ml'}</span>` : ''}
                 </div>
                 <p class="text-xs text-text-muted">排序: ${b.sort_order} · ${b.is_active ? '启用' : '禁用'}</p>
             </div>
@@ -237,6 +238,11 @@ function showAddButtonModal() {
     document.getElementById('new-btn-amount').value = '0';
     document.getElementById('new-btn-order').value = '0';
     document.getElementById('custom-subtype-input').value = '';
+    // 重置辅食单位
+    const unitSel = document.getElementById('btn-food-unit');
+    const unitCustom = document.getElementById('btn-food-unit-custom');
+    if (unitSel) unitSel.value = 'g';
+    if (unitCustom) { unitCustom.value = ''; unitCustom.classList.add('hidden'); }
     updateSubTypes();
 }
 
@@ -268,6 +274,9 @@ function showEditButtonModal(id) {
     document.getElementById('new-btn-label').value = btn.label || '';
     document.getElementById('new-btn-amount').value = btn.amount || 0;
     document.getElementById('new-btn-order').value = btn.sort_order || 0;
+    // 加载辅食单位
+    _loadFoodUnitUI(btn.food_unit || '');
+    _updateBtnAmountLabel();
 }
 
 function closeAddButtonModal() {
@@ -291,6 +300,76 @@ function onSubTypeChange() {
     if (wrap) {
         wrap.classList.toggle('hidden', sel.value !== '_custom');
     }
+    // 辅食单位选择器显示
+    const foodUnitWrap = document.getElementById('food-unit-wrap');
+    if (foodUnitWrap) {
+        foodUnitWrap.classList.toggle('hidden', sel.value !== 'solid_food');
+    }
+    _updateBtnAmountLabel();
+}
+
+// 辅食单位选择器：自定义切换
+function onFoodUnitChange() {
+    const unitSel = document.getElementById('btn-food-unit');
+    const customInput = document.getElementById('btn-food-unit-custom');
+    if (!unitSel || !customInput) return;
+    if (unitSel.value === '_custom') {
+        customInput.classList.remove('hidden');
+        customInput.focus();
+    } else {
+        customInput.classList.add('hidden');
+        customInput.value = '';
+    }
+    _updateBtnAmountLabel();
+}
+
+// 加载已有 food_unit 到 UI
+function _loadFoodUnitUI(curUnit) {
+    const unitSel = document.getElementById('btn-food-unit');
+    const customInput = document.getElementById('btn-food-unit-custom');
+    if (!unitSel || !customInput) return;
+    const presets = ['g', '勺', '块'];
+    if (presets.includes(curUnit)) {
+        unitSel.value = curUnit;
+        customInput.classList.add('hidden');
+        customInput.value = '';
+    } else if (curUnit) {
+        unitSel.value = '_custom';
+        customInput.classList.remove('hidden');
+        customInput.value = curUnit;
+    } else {
+        unitSel.value = 'g';
+        customInput.classList.add('hidden');
+        customInput.value = '';
+    }
+    // 控制整体 wrap 显隐
+    const sel = document.getElementById('new-btn-subtype');
+    const foodUnitWrap = document.getElementById('food-unit-wrap');
+    if (foodUnitWrap && sel) {
+        foodUnitWrap.classList.toggle('hidden', sel.value !== 'solid_food');
+    }
+}
+
+// 更新预设量标签单位
+function _updateBtnAmountLabel() {
+    const sel = document.getElementById('new-btn-subtype');
+    const label = document.getElementById('btn-amount-label');
+    if (!sel || !label) return;
+    if (sel.value === 'solid_food') {
+        const unitSel = document.getElementById('btn-food-unit');
+        const customInput = document.getElementById('btn-food-unit-custom');
+        let unit = 'g';
+        if (unitSel) {
+            if (unitSel.value === '_custom' && customInput && customInput.value) {
+                unit = customInput.value;
+            } else if (unitSel.value !== '_custom') {
+                unit = unitSel.value;
+            }
+        }
+        label.textContent = `预设量 (${unit}，0=不预设)`;
+    } else {
+        label.textContent = '预设量 (ml，0=不预设)';
+    }
 }
 
 async function addButton() {
@@ -302,13 +381,31 @@ async function addButton() {
             return;
         }
     }
+    // 解析辅食计量单位
+    let foodUnit = '';
+    if (subType === 'solid_food') {
+        const unitSel = document.getElementById('btn-food-unit');
+        const customInput = document.getElementById('btn-food-unit-custom');
+        if (unitSel && unitSel.value === '_custom') {
+            foodUnit = customInput ? customInput.value.trim() : '';
+            if (!foodUnit) {
+                showToast('请输入或选择辅食计量单位');
+                return;
+            }
+        } else if (unitSel) {
+            foodUnit = unitSel.value;
+        } else {
+            foodUnit = 'g';
+        }
+    }
     const data = {
         type: document.getElementById('new-btn-type').value,
         sub_type: subType,
         label: document.getElementById('new-btn-label').value.trim(),
         amount: parseInt(document.getElementById('new-btn-amount').value) || 0,
         sort_order: parseInt(document.getElementById('new-btn-order').value) || 0,
-        is_active: 1
+        is_active: 1,
+        food_unit: foodUnit
     };
     if (!data.label) {
         showToast('请输入显示标签');

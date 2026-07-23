@@ -4,14 +4,28 @@
 
 {% block content %}
 <div class="space-y-5 fade-in pb-20 md:pb-0">
-    <div class="flex items-center justify-between">
+    <div class="flex items-center gap-3 flex-wrap">
         <h1 class="text-xl font-semibold">趋势</h1>
-        <div class="flex items-center gap-2">
-            <select id="trend-days" class="input-field font-mono text-xs py-1.5 w-24" onchange="loadTrends()">
+        <div class="flex-1"></div>
+        <!-- 模式选择器：日/月/时 -->
+        <div class="card flex items-center gap-0.5 p-0.5">
+            <button class="tab-pill px-3 py-1 text-xs rounded-md active" data-mode="day" onclick="switchTrendMode('day')">日</button>
+            <button class="tab-pill px-3 py-1 text-xs rounded-md" data-mode="month" onclick="switchTrendMode('month')">月</button>
+            <button class="tab-pill px-3 py-1 text-xs rounded-md" data-mode="hour" onclick="switchTrendMode('hour')">时</button>
+        </div>
+        <!-- 范围选择器（固定位置大小，内容随模式切换） -->
+        <div class="range-pill relative" id="range-picker-wrap">
+            <span class="range-display" id="range-display">14天</span>
+            <!-- 日/月模式：天数 select -->
+            <select id="trend-days" onchange="onRangeChange(this.value)">
                 <option value="7">7天</option>
                 <option value="14" selected>14天</option>
                 <option value="30">30天</option>
+                <option value="60">60天</option>
+                <option value="90">90天</option>
             </select>
+            <!-- 时模式：具体日期 date input -->
+            <input type="date" id="trend-date" class="hidden" onchange="onRangeChange(this.value)">
         </div>
     </div>
 
@@ -23,13 +37,16 @@
                 <h2 class="text-sm font-medium text-text-secondary">体重趋势</h2>
             </div>
             <div class="flex items-center gap-2">
-                <select id="weight-days" class="hour-day-picker" onchange="loadWeightTrend()">
-                    <option value="30" selected>30天</option>
-                    <option value="90">90天</option>
-                    <option value="180">半年</option>
-                    <option value="365">1年</option>
-                </select>
-                <button class="text-xs text-accent hover:underline" onclick="showWeightModal()">记录体重</button>
+                <label class="range-pill relative" id="weight-days-wrap">
+                    <span class="range-display" id="weight-days-display">30天</span>
+                    <select id="weight-days" onchange="loadWeightTrend()">
+                        <option value="30" selected>30天</option>
+                        <option value="90">90天</option>
+                        <option value="180">半年</option>
+                        <option value="365">1年</option>
+                    </select>
+                </label>
+                <button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors inline-flex items-center" onclick="showWeightModal()" style="height:28px">记录体重</button>
             </div>
         </div>
         <div style="position:relative;height:200px">
@@ -38,11 +55,11 @@
         <div id="weight-list" class="mt-3 space-y-1"></div>
     </div>
 
-    <!-- 每日喂养量 -->
+    <!-- 喂养量趋势 -->
     <div class="card">
         <div class="flex items-center gap-2 mb-3">
             <i data-lucide="bar-chart-3" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary">每日喂养量</h2>
+            <h2 class="text-sm font-medium text-text-secondary" id="feed-chart-title">每日喂养量</h2>
             <span class="text-[10px] text-text-muted">(ml)</span>
         </div>
         <div style="position:relative;height:200px">
@@ -50,29 +67,27 @@
         </div>
     </div>
 
-    <!-- 喂养时段分布 -->
-    <div class="card">
+    <!-- 辅食趋势 -->
+    <div class="card" id="food-card">
         <div class="flex items-center justify-between mb-3">
             <div class="flex items-center gap-2">
-                <i data-lucide="clock" class="w-4 h-4 text-accent"></i>
-                <h2 class="text-sm font-medium text-text-secondary">喂养时段分布</h2>
-                <span class="text-[10px] text-text-muted">(次)</span>
+                <i data-lucide="utensils" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary" id="food-chart-title">每日辅食</h2>
+                <span class="text-[10px] text-text-muted" id="food-unit-hint"></span>
             </div>
-            <div class="flex items-center gap-2">
-                <input type="date" id="hour-chart-day" class="hour-day-picker" onchange="renderHourChart()" title="选择日期">
-                <button class="text-[10px] text-text-muted hover:text-accent hover:underline whitespace-nowrap" onclick="clearHourDay()">全部</button>
-            </div>
+            <div id="food-legend" class="flex items-center gap-3 text-xs"></div>
         </div>
-        <div style="position:relative;height:160px">
-            <canvas id="hour-chart"></canvas>
+        <div style="position:relative;height:200px">
+            <canvas id="food-chart"></canvas>
         </div>
+        <div id="food-empty" class="hidden text-center text-xs text-text-muted py-6">暂无辅食记录</div>
     </div>
 
     <!-- 排泄趋势 -->
     <div class="card">
         <div class="flex items-center gap-2 mb-3">
             <i data-lucide="activity" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary">排泄趋势</h2>
+            <h2 class="text-sm font-medium text-text-secondary" id="excrete-chart-title">每日排泄</h2>
             <span class="text-[10px] text-text-muted">(次)</span>
         </div>
         <div style="position:relative;height:160px">
@@ -81,6 +96,27 @@
         <div class="flex items-center gap-4 mt-2 text-xs">
             <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>排尿</span>
             <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>排便</span>
+        </div>
+    </div>
+
+    <!-- 喂养时段分布（仅日模式显示） -->
+    <div class="card" id="hour-card">
+        <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+                <i data-lucide="clock" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary">喂养时段分布</h2>
+                <span class="text-[10px] text-text-muted">(次)</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <label class="range-pill relative" id="hour-day-wrap">
+                    <span class="range-display" id="hour-day-display">今日</span>
+                    <input type="date" id="hour-chart-day" onchange="onHourDayChange(this.value)">
+                </label>
+                <button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors inline-flex items-center" onclick="clearHourDay()" style="height:28px">全部</button>
+            </div>
+        </div>
+        <div style="position:relative;height:160px">
+            <canvas id="hour-chart"></canvas>
         </div>
     </div>
 </div>

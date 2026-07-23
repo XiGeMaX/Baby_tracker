@@ -132,8 +132,20 @@ function renderList() {
         groups[s.name].push(s);
     });
 
+    // 按未接种计划的最近日期排序（已全完成的排最后）
+    const sortedEntries = Object.entries(groups).sort((a, b) => {
+        const aUpcoming = a[1].filter(d => d.status !== 'done');
+        const bUpcoming = b[1].filter(d => d.status !== 'done');
+        if (aUpcoming.length === 0 && bUpcoming.length === 0) return 0;
+        if (aUpcoming.length === 0) return 1;
+        if (bUpcoming.length === 0) return -1;
+        const aMin = aUpcoming.reduce((min, d) => (d.due_date && d.due_date < min) ? d.due_date : min, aUpcoming[0].due_date || '9999');
+        const bMin = bUpcoming.reduce((min, d) => (d.due_date && d.due_date < min) ? d.due_date : min, bUpcoming[0].due_date || '9999');
+        return aMin.localeCompare(bMin);
+    });
+
     let html = '';
-    for (const [name, doses] of Object.entries(groups)) {
+    for (const [name, doses] of sortedEntries) {
         const allDone = doses.every(d => d.status === 'done');
         const hasOverdue = doses.some(d => d.status === 'overdue');
         const isCustom = doses[0].is_custom;
@@ -190,24 +202,40 @@ function bindVaccineListEvents() {
 
 function onDoseClick(name, doseIndex, status, dueDate, isCustom, vaccinatedDate, note) {
     if (status === 'done') {
-        // 已接种：弹出编辑弹窗（可修改日期/备注/删除）
         showEditVaccineModal(name, doseIndex, vaccinatedDate, note);
     } else {
-        // 未接种：弹出计划日期修改弹窗（可修改计划日期或直接记录接种）
-        showPlanDateModal(name, doseIndex, dueDate);
+        showPlanDateModal(name, doseIndex, dueDate, isCustom);
     }
 }
 
 // ── 计划日期修改弹窗 ─────────────────────────────────────
-function showPlanDateModal(name, doseIndex, dueDate) {
+function showPlanDateModal(name, doseIndex, dueDate, isCustom) {
     document.getElementById('pdm-name').value = name;
     document.getElementById('pdm-dose').value = doseIndex;
+    document.getElementById('pdm-custom').value = isCustom ? '1' : '0';
     document.getElementById('pdm-date').value = dueDate || new Date().toISOString().slice(0, 10);
     document.getElementById('plan-date-modal-title').textContent = `${name} 第${doseIndex}剂`;
     const m = document.getElementById('plan-date-modal');
     m.classList.remove('hidden');
     m.classList.add('flex');
     if (typeof fabClose === 'function') fabClose();
+}
+
+async function deleteVaccinePlan() {
+    const name = document.getElementById('pdm-name').value;
+    const doseIndex = parseInt(document.getElementById('pdm-dose').value);
+    const isCustom = document.getElementById('pdm-custom').value === '1';
+    if (!await showConfirm(`确定删除 ${name} 第${doseIndex}剂 的计划？`, { confirmText: '删除', danger: true })) return;
+    try {
+        const url = isCustom ? '/api/vaccine/custom-plan' : '/api/vaccine/plan';
+        await api(url, {
+            method: 'DELETE',
+            body: JSON.stringify({ vaccine_name: name, dose_index: doseIndex })
+        });
+        showToast('已删除');
+        closePlanDateModal();
+        await loadVaccine();
+    } catch (e) { showToast(e.message); }
 }
 
 function closePlanDateModal() {
@@ -345,12 +373,15 @@ async function deleteVaccineFromEdit() {
     } catch (e) { showToast(e.message); }
 }
 
-// ── 自定义疫苗弹窗 ───────────────────────────────────────
+// ── 自定义疫苗弹窗（多针剂） ─────────────────────────────
+let _doseCounter = 0;
+
 function showAddVaccineModal() {
     document.getElementById('av-name').value = '';
-    document.getElementById('av-dose').value = '1';
-    document.getElementById('av-date').value = new Date().toISOString().slice(0, 10);
-    document.getElementById('av-note').value = '';
+    const container = document.getElementById('av-doses-container');
+    container.innerHTML = '';
+    _doseCounter = 0;
+    addDoseRow();
     const m = document.getElementById('add-vaccine-modal');
     m.classList.remove('hidden');
     m.classList.add('flex');
@@ -364,19 +395,50 @@ function closeAddVaccineModal() {
     m.classList.remove('flex');
 }
 
+function addDoseRow() {
+    _doseCounter++;
+    const container = document.getElementById('av-doses-container');
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2 dose-row';
+    row.innerHTML = `
+        <span class="text-xs text-text-muted w-10 flex-shrink-0">第${_doseCounter}剂</span>
+        <input type="date" class="input-field font-mono flex-1 text-xs" value="${new Date().toISOString().slice(0, 10)}">
+        <input type="text" class="input-field flex-1 text-xs" placeholder="备注">
+        ${_doseCounter > 1 ? `<button onclick="removeDoseRow(this)" class="text-text-muted hover:text-red-400 transition-colors flex-shrink-0 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>` : ''}
+    `;
+    container.appendChild(row);
+    lucide.createIcons();
+}
+
+function removeDoseRow(btn) {
+    btn.closest('.dose-row').remove();
+    const rows = document.querySelectorAll('#av-doses-container .dose-row');
+    rows.forEach((row, i) => {
+        row.querySelector('span').textContent = `第${i + 1}剂`;
+    });
+    _doseCounter = rows.length;
+}
+
 async function saveCustomVaccine() {
     const name = document.getElementById('av-name').value.trim();
-    const doseIndex = parseInt(document.getElementById('av-dose').value) || 1;
-    const vaccinatedDate = document.getElementById('av-date').value;
-    const note = document.getElementById('av-note').value;
     if (!name) { showToast('请输入疫苗名称'); return; }
-    if (!vaccinatedDate) { showToast('请选择日期'); return; }
+    const rows = document.querySelectorAll('#av-doses-container .dose-row');
+    const doses = [];
+    rows.forEach((row, i) => {
+        const dateInput = row.querySelector('input[type="date"]');
+        const noteInput = row.querySelector('input[type="text"]');
+        const dueDate = dateInput.value;
+        if (dueDate) {
+            doses.push({ dose_index: i + 1, due_date: dueDate, note: noteInput ? noteInput.value : '' });
+        }
+    });
+    if (doses.length === 0) { showToast('请至少添加一剂'); return; }
     try {
-        await api('/api/vaccine/record', {
+        await api('/api/vaccine/custom-plan', {
             method: 'POST',
-            body: JSON.stringify({ vaccine_name: name, dose_index: doseIndex, vaccinated_date: vaccinatedDate, note })
+            body: JSON.stringify({ vaccine_name: name, doses })
         });
-        showToast(`${name} 第${doseIndex}剂 已记录`);
+        showToast(`${name} 已添加 ${doses.length} 剂`);
         closeAddVaccineModal();
         await loadVaccine();
     } catch (e) { showToast(e.message); }
@@ -1023,7 +1085,10 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
             const colorMap = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
 
             let detail = '';
-            if (r.amount) detail += `${r.amount}ml`;
+            if (r.amount) {
+                const unit = (r.sub_type === 'solid_food' && r.food_unit) ? r.food_unit : 'ml';
+                detail += `${r.amount}${unit}`;
+            }
             if (r.duration) detail += ` · ${r.duration}分钟`;
             if (r.temperature) detail += ` · ${r.temperature}°C`;
             if (r.color) detail += ` · ${r.color}`;
