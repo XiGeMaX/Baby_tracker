@@ -55,16 +55,16 @@ function updateModeUI() {
     document.querySelectorAll('[data-mode]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.mode === trendsMode);
     });
-    // 范围选择器：日/月模式显示 select，时模式显示 date input（位置固定不变）
+    // 范围选择器：日/月模式显示 select，时模式显示 date label（位置固定不变）
     const daysSel = document.getElementById('trend-days');
-    const dateInput = document.getElementById('trend-date');
-    if (daysSel && dateInput) {
+    const dateLabel = document.getElementById('trend-date-label');
+    if (daysSel && dateLabel) {
         if (trendsMode === 'hour') {
             daysSel.classList.add('hidden');
-            dateInput.classList.remove('hidden');
+            dateLabel.classList.remove('hidden');
         } else {
             daysSel.classList.remove('hidden');
-            dateInput.classList.add('hidden');
+            dateLabel.classList.add('hidden');
             // 月模式下选项调整
             if (trendsMode === 'month') {
                 daysSel.innerHTML = `

@@ -14,6 +14,8 @@
             <button class="tab-pill px-3 py-1 text-xs rounded-md" data-mode="hour" onclick="switchTrendMode('hour')">时</button>
         </div>
         <!-- 范围选择器（固定位置大小，内容随模式切换） -->
+        <!-- 时模式日期选择器：放在外部，用 label for 触发（iOS兼容） -->
+        <input type="date" id="trend-date" class="sr-only" onchange="onRangeChange(this.value)">
         <div class="range-pill relative" id="range-picker-wrap">
             <span class="range-display" id="range-display">14天</span>
             <!-- 日/月模式：天数 select -->
@@ -24,8 +26,8 @@
                 <option value="60">60天</option>
                 <option value="90">90天</option>
             </select>
-            <!-- 时模式：具体日期 date input -->
-            <input type="date" id="trend-date" class="hidden" onchange="onRangeChange(this.value)">
+            <!-- 时模式：label 覆盖整个 pill 触发外部 date input -->
+            <label for="trend-date" id="trend-date-label" class="absolute inset-0 cursor-pointer hidden"></label>
         </div>
     </div>
 
@@ -108,9 +110,9 @@
                 <span class="text-[10px] text-text-muted">(次)</span>
             </div>
             <div class="flex items-center gap-2">
-                <label class="range-pill relative" id="hour-day-wrap">
+                <input type="date" id="hour-chart-day" class="sr-only" onchange="onHourDayChange(this.value)">
+                <label class="range-pill relative" for="hour-chart-day" id="hour-day-wrap">
                     <span class="range-display" id="hour-day-display">今日</span>
-                    <input type="date" id="hour-chart-day" onchange="onHourDayChange(this.value)">
                 </label>
                 <button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors inline-flex items-center" onclick="clearHourDay()" style="height:28px">全部</button>
             </div>
