@@ -819,15 +819,17 @@ function generateHaYaml() {
             'status': {
                 name: '宝宝今日奶量',
                 resource: '/api/ha/status',
-                value_template: '{{ value_json.total_feed_ml }}',
+                value_template: '{{ value_json.state }}',
                 unit: 'ml',
-                attrs: ['feed_count', 'target_ml', 'remaining_ml', 'feed_progress', 'urine_count', 'stool_count', 'last_feed_time', 'estimated_feeds_left', 'per_feed_ml']
+                attributes_path: '$.attributes',
+                attrs: ['total_feed_ml', 'feed_count', 'target_ml', 'remaining_ml', 'feed_progress', 'progress_percent', 'urine_count', 'stool_count', 'last_feed_time', 'estimated_feeds_left', 'per_feed_ml']
             },
             'feed-today': {
                 name: '宝宝今日喂养',
                 resource: '/api/ha/feed-today',
                 value_template: '{{ value_json.state }}',
                 unit: '',
+                attributes_path: '$.attributes',
                 attrs: ['feed_count', 'feeds']
             },
             'last-feed': {
@@ -835,6 +837,7 @@ function generateHaYaml() {
                 resource: '/api/ha/last-feed',
                 value_template: '{{ value_json.state }}',
                 unit: '',
+                attributes_path: '$.attributes',
                 attrs: ['sub_type', 'amount_ml', 'duration_min']
             },
             'excrete-today': {
@@ -842,6 +845,7 @@ function generateHaYaml() {
                 resource: '/api/ha/excrete-today',
                 value_template: '{{ value_json.state }}',
                 unit: '',
+                attributes_path: '$.attributes',
                 attrs: ['urine_count', 'stool_count', 'total_count']
             }
         };
@@ -855,6 +859,7 @@ function generateHaYaml() {
             lines.push(`    value_template: "${cfg.value_template}"`);
             if (cfg.unit) lines.push(`    unit_of_measurement: "${cfg.unit}"`);
             if (cfg.attrs.length > 0) {
+                if (cfg.attributes_path) lines.push(`    json_attributes_path: "${cfg.attributes_path}"`);
                 lines.push(`    json_attributes:`);
                 cfg.attrs.forEach(a => lines.push(`      - ${a}`));
             }
@@ -870,11 +875,12 @@ function generateHaYaml() {
             lines.push(`  # ${sw.label}`);
             lines.push(`  - platform: rest`);
             lines.push(`    name: "${sw.label}"`);
-            lines.push(`    resource: "${base}/api/ha/button/${sw.id}?api_key=${apiKey}"`);
+            lines.push(`    resource: "${base}/api/ha/button/${sw.id}"`);
             lines.push(`    body_on: '{"state":"on"}'`);
             lines.push(`    body_off: '{"state":"off"}'`);
             lines.push(`    is_on_template: "{{ value_json.state == 'on' }}"`);
             lines.push(`    headers:`);
+            lines.push(`      Authorization: "Bearer ${apiKey}"`);
             lines.push(`      Content-Type: application/json`);
             lines.push(`    scan_interval: 5`);
             lines.push('');

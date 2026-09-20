@@ -53,7 +53,15 @@ function renderDashboard(data) {
     document.getElementById('stool-count').textContent = data.stool_count;
 
     // 上次喂养
-    document.getElementById('last-feed-time').textContent = data.last_feed_time ? formatTime(data.last_feed_time) : '暂无记录';
+    const lastFeedTime = document.getElementById('last-feed-time');
+    if (!data.last_feed_time) {
+        lastFeedTime.textContent = '暂无记录';
+    } else {
+        const lastFeedDate = data.last_feed_time.slice(0, 10);
+        lastFeedTime.textContent = lastFeedDate === getLocalDate()
+            ? formatTime(data.last_feed_time)
+            : formatDateTime(data.last_feed_time);
+    }
 
     // 快速记录按钮（仅首次渲染）
     const btnContainer = document.getElementById('quick-buttons');

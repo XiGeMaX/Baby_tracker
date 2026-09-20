@@ -139,9 +139,11 @@ sensor:
   - platform: rest
     name: "宝宝今日奶量"
     resource: "http://<IP>:8964/api/ha/status"
-    value_template: "{{ value_json.total_feed_ml }}"
+    value_template: "{{ value_json.state }}"
     unit_of_measurement: "ml"
+    json_attributes_path: "$.attributes"
     json_attributes:
+      - total_feed_ml
       - feed_count
       - target_ml
       - urine_count
@@ -156,11 +158,12 @@ sensor:
 switch:
   - platform: rest
     name: "喂养-母乳30ml"
-    resource: "http://<IP>:8964/api/ha/button/1?api_key=<YOUR_API_KEY>"
+    resource: "http://<IP>:8964/api/ha/button/1"
     body_on: '{"state":"on"}'
     body_off: '{"state":"off"}'
     is_on_template: "{{ value_json.state == 'on' }}"
     headers:
+      Authorization: "Bearer <YOUR_API_KEY>"
       Content-Type: application/json
     scan_interval: 5
 ```
@@ -256,4 +259,3 @@ baby-tracker/
 ## 许可证
 
 MIT License
-

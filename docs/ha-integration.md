@@ -45,6 +45,7 @@
 |---|---|
 | URL 参数 | `?api_key=<YOUR_API_KEY>` |
 | HTTP 头 | `Authorization: Bearer <YOUR_API_KEY>` |
+| HTTP 头 | `X-API-Key: <YOUR_API_KEY>` |
 
 > 传感器接口（只读）无需密钥。
 
@@ -55,9 +56,11 @@ sensor:
   - platform: rest
     name: "宝宝今日奶量"
     resource: "http://<IP>:8964/api/ha/status"
-    value_template: "{{ value_json.total_feed_ml }}"
+    value_template: "{{ value_json.state }}"
     unit_of_measurement: "ml"
+    json_attributes_path: "$.attributes"
     json_attributes:
+      - total_feed_ml
       - feed_count
       - target_ml
       - remaining_ml
@@ -73,6 +76,7 @@ sensor:
     name: "宝宝今日排泄"
     resource: "http://<IP>:8964/api/ha/excrete-today"
     value_template: "{{ value_json.state }}"
+    json_attributes_path: "$.attributes"
     json_attributes:
       - urine_count
       - stool_count
@@ -88,11 +92,12 @@ sensor:
 switch:
   - platform: rest
     name: "喂养-母乳30ml"
-    resource: "http://<IP>:8964/api/ha/button/1?api_key=<YOUR_API_KEY>"
+    resource: "http://<IP>:8964/api/ha/button/1"
     body_on: '{"state":"on"}'
     body_off: '{"state":"off"}'
     is_on_template: "{{ value_json.state == 'on' }}"
     headers:
+      Authorization: "Bearer <YOUR_API_KEY>"
       Content-Type: application/json
     scan_interval: 5
 ```
@@ -101,7 +106,7 @@ switch:
 - `resource` 末尾数字是按钮 ID（从 `/api/ha/buttons` 获取）
 - HA 打开开关时 POST 到 `resource` URL 触发记录
 - 记录成功后状态保持 `on` 2 秒，自动回弹 `off`
-- API 密钥必须附加到 resource URL 中，否则返回 401
+- API 密钥通过 `Authorization: Bearer` 或 `X-API-Key` 请求头传递，也兼容旧的 URL 参数
 
 ---
 
@@ -134,6 +139,23 @@ content: |
 
 ## API 参考
 
+HA 传感器接口统一返回实体结构：
+
+```json
+{
+  "state": 420,
+  "attributes": {
+    "unit_of_measurement": "ml",
+    "feed_count": 6,
+    "target_ml": 500,
+    "urine_count": 5,
+    "stool_count": 2
+  }
+}
+```
+
+HA 配置应使用 `value_json.state` 读取主状态，并通过 `json_attributes_path: "$.attributes"` 读取属性。`date=YYYY-MM-DD` 参数可指定需要查询的日期。
+
 ### 传感器 API（无需认证）
 
 | 端点 | 方法 | 说明 |
@@ -162,7 +184,8 @@ content: |
 ### 开关工作流程
 
 ```
-HA 打开开关 → POST /api/ha/button/<id>?api_key=<KEY>
+HA 打开开关 → POST /api/ha/button/<id>
+              Authorization: Bearer <KEY>
                 ↓
          验证 API 密钥
          ┌─ 无效 → 返回 401 未授权

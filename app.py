@@ -905,6 +905,13 @@ def delete_record(record_id):
     return jsonify(summary)
 
 
+def _get_latest_feed(db):
+    """返回全局最近一条喂养记录，时间相同时以较大 ID 为准。"""
+    return db.execute(
+        "SELECT * FROM records WHERE type = 'feed' ORDER BY timestamp DESC, id DESC LIMIT 1"
+    ).fetchone()
+
+
 def _today_summary_data(db, target_date=None):
     """提取今日概览数据，供 quick_record 和 today_summary 共用"""
     if target_date is None:
@@ -919,7 +926,8 @@ def _today_summary_data(db, target_date=None):
     estimate = estimate_milk(dict(baby) if baby else None, settings_dict)
 
     today_records = db.execute(
-        "SELECT * FROM records WHERE timestamp >= ? AND timestamp <= ? AND type IN ('feed', 'excrete')",
+        "SELECT * FROM records WHERE timestamp >= ? AND timestamp <= ? AND type IN ('feed', 'excrete') "
+        "ORDER BY timestamp ASC, id ASC",
         (start, end)
     ).fetchall()
     feeds = [r for r in today_records if r['type'] == 'feed']
@@ -947,7 +955,8 @@ def _today_summary_data(db, target_date=None):
     urine_count = sum(1 for e in excretes if e['sub_type'] in ('urine', 'both'))
     stool_count = sum(1 for e in excretes if e['sub_type'] in ('stool', 'both'))
 
-    last_feed = milk_feeds[-1] if milk_feeds else (feeds[-1] if feeds else None)
+    # 上次喂养是全局最新记录，不受首页所选日期或 SQLite 默认行序影响。
+    last_feed = _get_latest_feed(db)
     last_feed_time = last_feed['timestamp'] if last_feed else None
 
     recent = db.execute("SELECT * FROM records ORDER BY timestamp DESC LIMIT 5").fetchall()
@@ -2436,7 +2445,10 @@ def delete_countdown(cid):
 # ── API: Home Assistant ───────────────────────────────────
 
 def _check_ha_api_key():
-    api_key = request.args.get('api_key') or request.headers.get('Authorization', '').replace('Bearer ', '')
+    api_key = request.args.get('api_key') or request.headers.get('X-API-Key', '').strip()
+    authorization = request.headers.get('Authorization', '').strip()
+    if not api_key and authorization.lower().startswith('bearer '):
+        api_key = authorization[7:].strip()
     if not api_key:
         return False
     db = get_db()
@@ -2469,54 +2481,102 @@ def get_ha_api_key():
 
 @app.route('/api/ha/status', methods=['GET'])
 def ha_status():
+    """Home Assistant REST sensor: today's feeding overview."""
     target_date = request.args.get('date') or date.today().isoformat()
     db = get_db()
-    s = _today_summary_data(db, target_date)
-    progress = min(100, round(s['total_feed_ml'] / s['target_ml'] * 100)) if s['target_ml'] > 0 else 0
+    summary = _today_summary_data(db, target_date)
+    progress = min(100, round(summary['feed_progress'] * 100))
+    last_feed = _get_latest_feed(db)
     return jsonify({
-        'state': f"{s['total_feed_ml']}/{s['target_ml']}ml",
+        'state': summary['total_feed_ml'],
         'attributes': {
-            'unit_of_measurement': 'ml', 'friendly_name': '今日奶量', 'icon': 'mdi:baby-bottle',
-            'feed_count': s['feed_count'], 'target_ml': s['target_ml'],
-            'consumed_ml': s['total_feed_ml'], 'remaining_ml': s['remaining_ml'],
-            'progress_percent': progress, 'urine_count': s['urine_count'], 'stool_count': s['stool_count'],
-            'per_feed_ml': s['per_feed_ml'], 'estimation_method': s['estimate']['method']
+            'unit_of_measurement': 'ml',
+            'friendly_name': '今日奶量',
+            'icon': 'mdi:baby-bottle',
+            'date': summary['date'],
+            'total_feed_ml': summary['total_feed_ml'],
+            'consumed_ml': summary['total_feed_ml'],
+            'feed_count': summary['feed_count'],
+            'target_ml': summary['target_ml'],
+            'remaining_ml': summary['remaining_ml'],
+            'feed_progress': summary['feed_progress'],
+            'progress_percent': progress,
+            'urine_count': summary['urine_count'],
+            'stool_count': summary['stool_count'],
+            'last_feed_time': last_feed['timestamp'] if last_feed else None,
+            'estimated_feeds_per_day': summary['estimated_feeds_per_day'],
+            'estimated_feeds_left': summary['estimated_feeds_left'],
+            'per_feed_ml': summary['per_feed_ml'],
+            'estimation_method': summary['estimate']['method']
         }
     })
 
 
 @app.route('/api/ha/feed-today', methods=['GET'])
 def ha_feed_today():
+    """Home Assistant REST sensor: feeding details for a date."""
     db = get_db()
-    today_str = date.today().isoformat()
-    start = f"{today_str} 00:00:00"
-    end = f"{today_str} 23:59:59"
-    feeds = db.execute("SELECT * FROM records WHERE timestamp >= ? AND timestamp <= ? AND type = 'feed' ORDER BY timestamp", (start, end)).fetchall()
-    # 仅液态奶计入ml总量（辅食有独立单位）
+    target_date = request.args.get('date') or date.today().isoformat()
+    start = f"{target_date} 00:00:00"
+    end = f"{target_date} 23:59:59"
+    feeds = db.execute("SELECT * FROM records WHERE timestamp >= ? AND timestamp <= ? AND type = 'feed' ORDER BY timestamp ASC, id ASC", (start, end)).fetchall()
+    # 仅液态奶计入 ml 总量（辅食使用独立单位）。
     milk_feeds = [f for f in feeds if f['sub_type'] != 'solid_food']
     total_ml = sum(f['amount'] or 0 for f in milk_feeds)
-    return jsonify({'state': str(round(total_ml)), 'attributes': {'unit_of_measurement': 'ml', 'friendly_name': '今日喂养总量', 'icon': 'mdi:baby-bottle-outline', 'feed_count': len(milk_feeds), 'feeds': [dict(f) for f in feeds]}})
+    return jsonify({
+        'state': round(total_ml),
+        'attributes': {
+            'unit_of_measurement': 'ml',
+            'friendly_name': '今日喂养总量',
+            'icon': 'mdi:baby-bottle-outline',
+            'date': target_date,
+            'feed_count': len(milk_feeds),
+            'feeds': [dict(f) for f in feeds]
+        }
+    })
 
 
 @app.route('/api/ha/last-feed', methods=['GET'])
 def ha_last_feed():
-    db = get_db()
-    feed = db.execute("SELECT * FROM records WHERE type = 'feed' ORDER BY timestamp DESC LIMIT 1").fetchone()
+    """Home Assistant REST sensor: globally latest feeding record."""
+    feed = _get_latest_feed(get_db())
     if not feed:
         return jsonify({'state': 'unknown', 'attributes': {'friendly_name': '上次喂养', 'icon': 'mdi:baby-bottle'}})
-    return jsonify({'state': feed['timestamp'], 'attributes': {'friendly_name': '上次喂养', 'icon': 'mdi:baby-bottle', 'sub_type': feed['sub_type'], 'amount_ml': feed['amount'], 'duration_min': feed['duration'], 'food_unit': feed['food_unit'] or ''}})
+    return jsonify({
+        'state': feed['timestamp'],
+        'attributes': {
+            'friendly_name': '上次喂养',
+            'icon': 'mdi:baby-bottle',
+            'sub_type': feed['sub_type'],
+            'amount_ml': feed['amount'],
+            'duration_min': feed['duration'],
+            'food_unit': feed['food_unit'] or ''
+        }
+    })
 
 
 @app.route('/api/ha/excrete-today', methods=['GET'])
 def ha_excrete_today():
+    """Home Assistant REST sensor: excretion details for a date."""
     db = get_db()
-    today_str = date.today().isoformat()
-    start = f"{today_str} 00:00:00"
-    end = f"{today_str} 23:59:59"
+    target_date = request.args.get('date') or date.today().isoformat()
+    start = f"{target_date} 00:00:00"
+    end = f"{target_date} 23:59:59"
     excretes = db.execute("SELECT * FROM records WHERE timestamp >= ? AND timestamp <= ? AND type = 'excrete'", (start, end)).fetchall()
     urine = sum(1 for e in excretes if e['sub_type'] in ('urine', 'both'))
     stool = sum(1 for e in excretes if e['sub_type'] in ('stool', 'both'))
-    return jsonify({'state': f'尿{urine}/便{stool}', 'attributes': {'friendly_name': '今日排泄', 'icon': 'mdi:diaper', 'urine_count': urine, 'stool_count': stool, 'total_count': len(excretes)}})
+    total = len(excretes)
+    return jsonify({
+        'state': total,
+        'attributes': {
+            'friendly_name': '今日排泄',
+            'icon': 'mdi:diaper',
+            'date': target_date,
+            'urine_count': urine,
+            'stool_count': stool,
+            'total_count': total
+        }
+    })
 
 
 # ── HA 快速按钮开关 ──────────────────────────────────────
