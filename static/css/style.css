@@ -66,6 +66,12 @@ body { -webkit-font-smoothing: antialiased; }
 }
 .nav-item:hover { color: var(--c-text-primary); background: var(--c-hover-overlay); }
 .nav-item.active { color: var(--c-accent); background: color-mix(in srgb, var(--c-accent) 10%, transparent); }
+.nav-item:focus { outline: none; }
+.nav-item:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 60%, transparent);
+    outline-offset: 2px;
+    border-radius: 8px;
+}
 
 .mobile-nav-item {
     display: flex; flex-direction: column; align-items: center;
@@ -86,6 +92,11 @@ body { -webkit-font-smoothing: antialiased; }
     pointer-events: none;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    /* 禁掉长按选中/拖拽，避免移动端出现方形的选中高亮框 */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    outline: none;
     transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
                 opacity 0.25s ease-out,
                 background 0.15s ease,
@@ -94,9 +105,19 @@ body { -webkit-font-smoothing: antialiased; }
 .fab-item:hover {
     background: var(--c-border); color: var(--c-text-primary);
 }
+/* 焦点：去掉浏览器默认的方形 focus ring，仅键盘操作时给一个贴合圆角的细环 */
+.fab-item:focus { outline: none; }
+.fab-item:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 60%, transparent);
+    outline-offset: 2px;
+    border-radius: 14px;
+}
+/* 当前所在页：淡绿底 + 绿色描边 + 加粗，形状沿用圆角胶囊 */
 .fab-item.active {
-    background: color-mix(in srgb, var(--c-accent) 10%, transparent); color: var(--c-accent);
-    border-color: color-mix(in srgb, var(--c-accent) 30%, transparent);
+    background: color-mix(in srgb, var(--c-accent) 14%, var(--c-surface));
+    color: var(--c-accent);
+    border-color: color-mix(in srgb, var(--c-accent) 45%, transparent);
+    font-weight: 700;
 }
 .fab-item:active {
     transform: scale(0.95) !important;
@@ -237,6 +258,36 @@ body { -webkit-font-smoothing: antialiased; }
     transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px;
 }
 [data-theme="light"] .btn-danger { color: #dc2626; border-color: rgba(220,38,38,0.3); }
+
+/* 紧凑按钮：移动端弹窗底部操作条，避免文字被挤压换行 */
+.btn-compact {
+    padding: 9px 14px;
+    font-size: 14px;
+    min-width: 0;
+}
+
+/* 移动端图标按钮：保证至少 40×40 的触摸目标（远大于原先 14px 图标） */
+.btn-tap {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; border-radius: 10px;
+    border: 1px solid var(--c-border); background: var(--c-surface);
+    flex-shrink: 0; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+.btn-tap:active { transform: scale(0.94); background: var(--c-hover-overlay); }
+.btn-tap:disabled, .btn-tap[disabled] { opacity: 0.3; pointer-events: none; }
+
+/* 行内小号图标按钮（批量录入每行底部的删除） */
+.btn-tap-sm { width: 36px; height: 36px; border-radius: 8px; }
+
+/* 移动端：批量录入行内输入框收紧内边距，避免原生日期控件被截断 */
+@media (max-width: 639px) {
+    .batch-row .input-field { padding-left: 9px; padding-right: 6px; font-size: 13px; }
+    .batch-row select.input-field { padding-right: 22px; }
+    .batch-row input[type="date"].input-field,
+    .batch-row input[type="time"].input-field { padding-right: 2px; }
+}
 .btn-danger:hover { background: rgba(239,68,68,0.1); }
 .btn-danger:active { transform: scale(0.98); }
 
@@ -507,3 +558,48 @@ input[type="time"].input-field::-webkit-date-and-time-value {
 
 :root { --calendar-icon-filter: invert(1); }
 [data-theme="light"] { --calendar-icon-filter: none; }
+
+/* ── Batch Entry Modal (拍照识别 / 批量录入) ────────────── */
+.batch-modal {
+    -webkit-overflow-scrolling: touch;
+}
+/* 移动端留出左右边距，避免面板贴边；桌面端保持 max-w-2xl */
+.batch-panel {
+    width: calc(100% - 1.5rem);
+    max-width: 42rem;
+    margin: 0 auto;
+}
+@media (min-width: 640px) {
+    .batch-panel { width: 100%; }
+}
+.batch-row {
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    transition: border-color 0.2s, background 0.2s;
+}
+.batch-row-warn {
+    border-color: rgba(245,158,11,0.4);
+    background: rgba(245,158,11,0.05);
+}
+.badge-warn {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: 9999px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #fbbf24;
+    background: rgba(245,158,11,0.12);
+    border: 1px solid rgba(245,158,11,0.35);
+    white-space: nowrap;
+}
+[data-theme="light"] .badge-warn {
+    color: #b45309;
+    background: rgba(180,83,9,0.1);
+    border-color: rgba(180,83,9,0.3);
+}
+.batch-summary {
+    background: var(--c-surface);
+    color: var(--c-text-secondary);
+    font-family: 'JetBrains Mono', Consolas, monospace;
+}

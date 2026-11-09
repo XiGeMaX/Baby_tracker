@@ -12,39 +12,21 @@
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
     <link rel="icon" type="image/png" href="/static/icons/icon-192.png">
     <title>{% block title %}Baby Tracker{% endblock %}</title>
-    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
     <link rel="dns-prefetch" href="https://unpkg.com">
-    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        base: 'var(--c-base)',
-                        surface: 'var(--c-surface)',
-                        border: 'var(--c-border)',
-                        accent: 'var(--c-accent)',
-                        'accent-dim': 'var(--c-accent-dim)',
-                        'text-primary': 'var(--c-text-primary)',
-                        'text-secondary': 'var(--c-text-secondary)',
-                        'text-muted': 'var(--c-text-muted)',
-                    },
-                    fontFamily: {
-                        mono: ['JetBrains Mono', 'Consolas', 'monospace'],
-                        sans: ['Noto Sans SC', 'system-ui', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
+    <!-- Tailwind 已改为本地静态构建产物（tailwind.config.js / tailwind.input.css），
+         不再依赖 Play CDN，离线与弱网可用；重建命令见 tailwind.config.js 顶部注释。
+         注意：必须排在 style.css 之后加载。原先 Play CDN 是在运行时把样式注入到
+         所有 <link> 之后，工具类优先级高于 style.css 里的自定义类；改成静态文件后
+         若顺序颠倒，.card 的 padding、.btn-* 的 padding 等会反过来覆盖 p-* / py-* 工具类。 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet"></noscript>
     <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Tailwind 工具类最后加载，保证 p-* / py-* / text-* 等能覆盖自定义组件类的同名属性 -->
+    <link rel="stylesheet" href="/static/css/tailwind.css">
     <script>
         // 主题初始化（在渲染前执行，避免闪烁）
         (function() {

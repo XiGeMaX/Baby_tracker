@@ -19,24 +19,66 @@ function showToast(msg) {
 
 // ── API Helper ───────────────────────────────────────────
 async function api(url, options = {}) {
+    // 摘出自定义选项：timeoutMs 与 signal 都不透传进 fetch init。
+    // signal（批量录入「取消」等外部取消信号）由内部 controller 统一接管，
+    // 这样单个 fetch 既能响应超时，也能响应外部取消。
+    const { timeoutMs, signal: externalSignal, ...fetchOptions } = options;
+
     // GET 请求加时间戳防缓存
-    if (!options.method || options.method === 'GET') {
+    if (!fetchOptions.method || fetchOptions.method === 'GET') {
         const sep = url.includes('?') ? '&' : '?';
         url = `${url}${sep}_t=${Date.now()}`;
     }
-    const resp = await fetch(url, {
-        cache: 'no-store',
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            ...(options.headers || {}),
-        },
-    });
-    if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: resp.statusText }));
-        throw new Error(err.error || '请求失败');
+
+    const controller = new AbortController();
+    let timedOut = false;
+    let timer = null;
+    if (timeoutMs) {
+        timer = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, timeoutMs);
     }
-    return resp.json();
+    // 外部取消信号联动内部 controller
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+        if (externalSignal.aborted) controller.abort();
+        else externalSignal.addEventListener('abort', onExternalAbort);
+    }
+
+    try {
+        const resp = await fetch(url, {
+            cache: 'no-store',
+            ...fetchOptions,
+            signal: controller.signal,
+            headers: {
+                'Content-Type': 'application/json',
+                ...(fetchOptions.headers || {}),
+            },
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({ error: resp.statusText }));
+            throw new Error(err.error || '请求失败');
+        }
+        return await resp.json();
+    } catch (e) {
+        if (controller.signal.aborted) {
+            if (timedOut) {
+                const err = new Error('请求超时，请重试');
+                err.isTimeout = true;
+                throw err;
+            }
+            if (externalSignal && externalSignal.aborted) {
+                const err = new Error('请求已取消');
+                err.isCancelled = true;
+                throw err;
+            }
+        }
+        throw e;
+    } finally {
+        if (timer) clearTimeout(timer);
+        if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+    }
 }
 
 // ── HTML Escape ──────────────────────────────────────────

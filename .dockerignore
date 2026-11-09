@@ -6,6 +6,7 @@ data/
 .gitignore
 .FullName
 package-lock.json
-static/css/tailwind.min.css
 static/vendor/
+tailwind.config.js
+tailwind.input.css
 docs/

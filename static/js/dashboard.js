@@ -9,6 +9,11 @@ async function initDashboard() {
         });
     }
     await refreshDashboard();
+    // PWA 快捷方式 /?action=batch：进入总览后直接打开拍照识别/批量录入弹窗
+    if (new URLSearchParams(location.search).get('action') === 'batch' &&
+        typeof window.openBatchModal === 'function') {
+        window.openBatchModal();
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

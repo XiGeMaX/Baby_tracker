@@ -3,7 +3,7 @@
 {% block title %}管理 - Baby Tracker{% endblock %}
 
 {% block content %}
-<div class="space-y-6 fade-in">
+<div class="space-y-6 fade-in pb-24 md:pb-0">
     <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">管理</h1>
         <a href="/" class="text-text-muted hover:text-text-secondary transition-colors text-sm flex items-center gap-1">
@@ -90,6 +90,38 @@
             <input type="number" id="feeds-per-day" class="input-field font-mono" min="4" max="16" value="8">
         </div>
         <button class="btn-primary text-sm" onclick="saveSettings()">保存设置</button>
+    </div>
+
+    <!-- AI 识别配置 -->
+    <div class="card space-y-4" id="ai-config-card">
+        <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2">
+                <i data-lucide="wand-sparkles" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary">AI 识别配置</h2>
+            </div>
+            <span id="ai-status-text" class="text-xs text-text-muted">加载中...</span>
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">接口地址 (base_url)</label>
+            <input type="text" id="ai-base-url" class="input-field font-mono text-xs" placeholder="如 https://api.openai.com/v1 或 http://localhost:11434/v1">
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">模型 (model)</label>
+            <input type="text" id="ai-model" class="input-field font-mono text-xs" placeholder="如 gpt-4o-mini / qwen-vl-max / glm-4v-flash">
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">API Key</label>
+            <input type="password" id="ai-api-key" class="input-field font-mono text-xs" placeholder="留空表示不修改" autocomplete="new-password">
+        </div>
+        <div class="flex gap-2 flex-wrap">
+            <button class="btn-primary text-sm flex items-center gap-2" id="ai-save-btn" onclick="saveAiConfig()">
+                <i data-lucide="check" class="w-4 h-4"></i> 保存
+            </button>
+            <button class="btn-secondary text-sm flex items-center gap-2" id="ai-test-btn" onclick="testAiConfig()">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i> 测试连接
+            </button>
+        </div>
+        <p class="text-[10px] text-text-muted">兼容 OpenAI /chat/completions 的视觉模型；环境变量优先级高于页面配置。API Key 不会回显，留空即保留原密钥。</p>
     </div>
 
     <!-- 数据管理 -->

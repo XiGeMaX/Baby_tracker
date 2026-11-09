@@ -11,6 +11,12 @@
             <p class="text-text-muted text-sm mt-0.5 font-mono" id="today-date"></p>
         </div>
         <div class="flex items-center gap-2">
+            {% if current_user and current_user.status == 'approved' %}
+            <button class="btn-primary flex items-center gap-2 text-sm" onclick="openBatchModal()">
+                <i data-lucide="camera" class="w-4 h-4"></i>
+                拍照识别 / 批量录入
+            </button>
+            {% endif %}
             {% if not current_user %}
             <a href="/login" class="btn-primary flex items-center gap-2 text-sm">
                 <i data-lucide="log-in" class="w-4 h-4"></i>
@@ -118,4 +124,5 @@
 
 {% block scripts %}
 <script src="/static/js/dashboard.js" data-page-script></script>
+<script src="/static/js/batch.js" data-page-script></script>
 {% endblock %}
