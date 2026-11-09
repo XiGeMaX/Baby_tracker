@@ -441,6 +441,133 @@ class ApiTestCase(unittest.TestCase):
                          json={'state': 'on'})
         self.assertEqual(resp.status_code, 200)
 
+    # ── AI 识别日志（排查用）────────────────────────────────
+
+    def test_ai_logs_requires_admin(self):
+        self.assertIn(self.client.get('/api/ai/logs').status_code, (401, 403))
+
+    def test_ai_logs_returns_recent_lines(self):
+        self._login_admin()
+        # 尚未产生日志：exists=False 且有提示
+        resp = self.client.get('/api/ai/logs')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertFalse(payload['exists'])
+
+        # 写入日志文件后应能取到尾部若干行（接口对行数有 10~2000 的钳制）
+        log_path = os.path.join(os.path.dirname(app_module.app.config['DATABASE']), 'ai_vision.log')
+        with open(log_path, 'w', encoding='utf-8') as f:
+            for i in range(15):
+                f.write('line-%d\n' % i)
+        resp = self.client.get('/api/ai/logs?lines=10')
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertTrue(payload['exists'])
+        self.assertEqual(len(payload['lines']), 10)
+        self.assertEqual(payload['lines'][0], 'line-5')
+        self.assertEqual(payload['lines'][-1], 'line-14')
+
+    def test_recognize_writes_ai_log(self):
+        """识别流程会记录请求摘要、模型原始返回与逐条解析结果。"""
+        cfg = {'base_url': 'http://example.invalid/v1', 'model': 'test-model',
+               'api_key': 'sk-test', 'configured': True}
+        fake = {'choices': [{'message': {'content':
+                '{"records":[{"type":"喂奶","sub_type":"配方奶","amount":90,"time":"08:30"}]}'}}]}
+        with patch.object(ai_service, 'call_chat_completions', return_value=fake):
+            with self.assertLogs('baby_tracker.ai', level='INFO') as captured:
+                records = ai_service.recognize_image(
+                    'data:image/png;base64,AAAA', '2026-11-09', cfg)
+        text = '\n'.join(captured.output)
+        self.assertTrue(any('开始识别图片' in line for line in captured.output))
+        self.assertTrue(any('AI 识别原始内容' in line for line in captured.output))
+        self.assertTrue(any('AI 识别完成' in line for line in captured.output))
+        self.assertNotIn('sk-test', text)          # 密钥不落日志
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]['timestamp'], '2026-11-09 08:30:00')
+
+
+    def test_recognize_reports_truncated_output(self):
+        """finish_reason=length 时应给出「被长度上限截断」的明确错误，而不是笼统的 JSON 错误。"""
+        cfg = {'base_url': 'http://example.invalid/v1', 'model': 'm',
+               'api_key': 'sk-test', 'configured': True}
+        fake = {
+            'choices': [{'message': {'content': '{"records":[{"type":"feeding"'}, 'finish_reason': 'length'}],
+            'usage': {'completion_tokens': 4000, 'total_tokens': 5200},
+        }
+        with patch.object(ai_service, 'call_chat_completions', return_value=fake):
+            with self.assertRaises(RuntimeError) as ctx:
+                ai_service.recognize_image('data:image/png;base64,AAAA', '2026-11-09', cfg)
+        self.assertIn('截断', str(ctx.exception))
+        self.assertIn('AI_VISION_MAX_TOKENS', str(ctx.exception))
+
+    def test_max_tokens_configurable(self):
+        with patch.dict(os.environ, {'AI_VISION_MAX_TOKENS': '8000'}):
+            self.assertEqual(ai_service._max_tokens(), 8000)
+        with patch.dict(os.environ, {'AI_VISION_MAX_TOKENS': 'bad'}):
+            self.assertIsNone(ai_service._max_tokens())   # 未配置 = 不限制
+        with patch.dict(os.environ, {'AI_VISION_MAX_TOKENS': '10'}):
+            self.assertEqual(ai_service._max_tokens(), 256)  # 下限保护
+
+    def test_request_body_omits_limits_by_default(self):
+        """默认既不下发 max_tokens，也不设超时。"""
+        body = ai_service.build_request_body({'model': 'm'}, [{'role': 'user', 'content': 'hi'}])
+        self.assertNotIn('max_tokens', body)
+        with patch.dict(os.environ, {'AI_VISION_MAX_TOKENS': '9000'}):
+            body = ai_service.build_request_body({'model': 'm'}, [])
+            self.assertEqual(body['max_tokens'], 9000)
+        body = ai_service.build_request_body({'model': 'm', 'max_tokens': 7000}, [])
+        self.assertEqual(body['max_tokens'], 7000)
+        # 超时同样默认不设置
+        with patch.dict(os.environ, {'AI_VISION_TIMEOUT': ''}):
+            self.assertIsNone(ai_service._timeout({}))
+        with patch.dict(os.environ, {'AI_VISION_TIMEOUT': '45'}):
+            self.assertEqual(ai_service._timeout({}), 45)
+            self.assertEqual(ai_service._timeout({'timeout': 30}), 30)
+            self.assertEqual(ai_service._timeout({}, override=20), 20)
+
+    def test_max_tokens_resolution_priority(self):
+        """env > settings > 未配置（None）。"""
+        base = {'ai_vision_base_url': 'https://x/v1', 'ai_vision_model': 'm',
+                'ai_vision_api_key': 'k'}
+        with patch.dict(os.environ, {'AI_VISION_MAX_TOKENS': ''}):
+            self.assertIsNone(ai_service.get_effective_config(base)['max_tokens'])
+            cfg = dict(base, ai_vision_max_tokens='8000')
+            self.assertEqual(ai_service.get_effective_config(cfg)['max_tokens'], 8000)
+        with patch.dict(os.environ, {'AI_VISION_MAX_TOKENS': '12000'}):
+            cfg = dict(base, ai_vision_max_tokens='8000')
+            self.assertEqual(ai_service.get_effective_config(cfg)['max_tokens'], 12000)
+
+    def test_ai_config_max_tokens_roundtrip(self):
+        self._login_admin()
+        with self._blank_ai_env():
+            resp = self.client.put('/api/ai/config', json={
+                'base_url': 'https://example.com/v1', 'model': 'm', 'max_tokens': 20480})
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.get_json()['config']['max_tokens'], 20480)
+            self.assertEqual(self.client.get('/api/ai/config').get_json()['max_tokens'], 20480)
+            # 传空字符串表示清除限制
+            resp = self.client.put('/api/ai/config', json={
+                'base_url': 'https://example.com/v1', 'model': 'm', 'max_tokens': ''})
+            self.assertEqual(resp.status_code, 200)
+            self.assertIsNone(resp.get_json()['config']['max_tokens'])
+            # 非法值直接拒绝，避免写入后识别全部失败
+            resp = self.client.put('/api/ai/config', json={
+                'base_url': 'https://example.com/v1', 'model': 'm', 'max_tokens': 'abc'})
+            self.assertEqual(resp.status_code, 400)
+
+    def test_recognize_uses_configured_max_tokens(self):
+        captured = {}
+
+        def fake_call(cfg, messages, timeout=60):
+            captured['max_tokens'] = ai_service._max_tokens(cfg)
+            return {'choices': [{'message': {'content': '{"records":[]}'}, 'finish_reason': 'stop'}]}
+
+        cfg = {'base_url': 'http://x/v1', 'model': 'm', 'api_key': 'k',
+               'configured': True, 'max_tokens': 20000}
+        with patch.object(ai_service, 'call_chat_completions', side_effect=fake_call):
+            ai_service.recognize_image('data:image/png;base64,AAAA', '2026-11-09', cfg)
+        self.assertEqual(captured['max_tokens'], 20000)
+
 
 if __name__ == '__main__':
     unittest.main()

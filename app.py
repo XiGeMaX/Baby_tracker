@@ -13,6 +13,8 @@ import secrets
 import string
 import base64
 import re
+import logging
+from logging.handlers import RotatingFileHandler
 import ai_service
 
 app = Flask(__name__)
@@ -1152,6 +1154,10 @@ def _ai_config_public(cfg):
     return {
         'base_url': cfg.get('base_url') or '',
         'model': cfg.get('model') or '',
+        # 未配置时为 null：表示不主动限制输出长度
+        'max_tokens': cfg.get('max_tokens'),
+        # 未配置时为 null：表示不主动设超时
+        'timeout': cfg.get('timeout'),
         'api_key_masked': ai_service.mask_key(key),
         'has_key': bool(key),
         'key_source': cfg.get('key_source') or 'none',
@@ -1193,16 +1199,39 @@ def ai_update_config():
     if api_key is not None:
         api_key = str(api_key).strip()
 
+    # 最大输出 token：可选。显式传空字符串表示「清除限制、使用服务商默认」；
+    # 传值则校验为整数，非法值直接拒绝，避免写入后识别全部失败。
+    clear_max_tokens = False
+    max_tokens = None
+    if 'max_tokens' in data:
+        raw_limit = data.get('max_tokens')
+        if raw_limit in (None, ''):
+            clear_max_tokens = True
+        else:
+            max_tokens = ai_service._coerce_max_tokens(raw_limit)
+            if max_tokens is None:
+                return jsonify({'error': '最大输出 token 必须是整数'}), 400
+
     # base_url / model 总是写 settings；api_key 省略或空串表示保留 db 中现有密钥
     db.execute(SETTING_UPSERT, ('ai_vision_base_url', base_url, base_url))
     db.execute(SETTING_UPSERT, ('ai_vision_model', model, model))
     if api_key:
         db.execute(SETTING_UPSERT, ('ai_vision_api_key', api_key, api_key))
+    if clear_max_tokens:
+        db.execute(SETTING_UPSERT, ('ai_vision_max_tokens', '', ''))
+    elif max_tokens is not None:
+        db.execute(SETTING_UPSERT, ('ai_vision_max_tokens', str(max_tokens), str(max_tokens)))
     db.commit()
 
     # 审计日志 detail 不含密钥
-    detail = 'base_url=%s, model=%s, api_key=%s' % (
-        base_url, model, '已更新' if api_key else '未修改')
+    if clear_max_tokens:
+        limit_desc = '已清除(使用服务商默认)'
+    elif max_tokens is not None:
+        limit_desc = max_tokens
+    else:
+        limit_desc = '未修改'
+    detail = 'base_url=%s, model=%s, max_tokens=%s, api_key=%s' % (
+        base_url, model, limit_desc, '已更新' if api_key else '未修改')
     add_log('修改AI配置', 'settings', None, detail)
     cfg = _effective_ai_config(db)
     return jsonify({'message': 'AI 配置已保存', 'config': _ai_config_public(cfg)})
@@ -1259,21 +1288,65 @@ def ai_recognize():
     if not cfg['configured']:
         return jsonify({'error': '尚未配置 AI 服务', 'configured': False}), 400
 
+    u = current_user()
+    ai_log = logging.getLogger('baby_tracker.ai')
+    ai_log.info('收到识别请求：user=%s date=%s image_bytes=%d model=%s',
+                (u['username'] if u else '?'), date_str, len(raw_bytes), cfg['model'])
+
     try:
         records = ai_service.recognize_image(image, date_str, cfg)
     except RuntimeError as e:
         # ai_service 抛出的都是友好中文；仍做一次兜底防泄漏
         msg = str(e) or '未知错误'
+        ai_log.error('识别失败（可预期）：%s', msg)
         if '密钥' in msg or 'key' in msg.lower() or 'authorization' in msg.lower():
             msg = '上游服务鉴权失败，请检查配置'
         return jsonify({'error': 'AI 识别失败：%s' % msg[:200]}), 502
     except Exception:
-        # 未知异常不外泄堆栈 / 密钥
+        # 未知异常不外泄堆栈 / 密钥，但日志里保留堆栈供排查
+        ai_log.exception('识别失败（未预期异常）')
         return jsonify({'error': 'AI 识别失败：服务暂时不可用，请稍后重试'}), 502
 
     if not isinstance(records, list):
+        ai_log.error('识别结果类型异常：%s', type(records).__name__)
         return jsonify({'error': 'AI 识别失败：返回数据格式异常'}), 502
+    ai_log.info('识别请求处理完成：返回 %d 条候选记录', len(records))
     return jsonify({'records': records, 'meta': {'model': cfg['model'], 'count': len(records)}})
+
+
+@app.route('/api/ai/logs', methods=['GET'])
+def ai_logs():
+    """查看最近的 AI 识别日志（仅管理员）。
+
+    日志用于排查「识别不准 / 返回非 JSON / 上游报错」等问题，
+    只包含请求摘要与模型返回内容，不包含图片本身与 API Key。
+    """
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+    try:
+        lines = int(request.args.get('lines', 200))
+    except (TypeError, ValueError):
+        lines = 200
+    lines = max(10, min(lines, 2000))
+
+    path = _ai_log_path()
+    if not os.path.exists(path):
+        return jsonify({'exists': False, 'lines': [], 'path': 'data/ai_vision.log',
+                        'hint': '还没有日志，发起一次拍照识别后即可在此查看'})
+
+    from collections import deque
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            tail = list(deque(f, maxlen=lines))
+    except OSError as e:
+        return jsonify({'error': '读取日志失败：%s' % e}), 500
+
+    return jsonify({
+        'exists': True,
+        'path': 'data/ai_vision.log',
+        'lines': [line.rstrip('\n') for line in tail],
+        'size': os.path.getsize(path),
+    })
 
 
 # ── API: Batch Records ─────────────────────────────────────
@@ -3116,6 +3189,52 @@ def pwa_icon(size):
 _db_initialized = False
 _db_init_lock = threading.Lock()
 
+# AI 识别日志：控制台（docker logs 可见）+ data/ai_vision.log（滚动，便于事后排查）
+_ai_log_configured = False
+
+
+def setup_ai_logging():
+    """配置 baby_tracker.ai 日志器。
+
+    - AI_VISION_LOG_LEVEL：日志级别，默认 INFO
+    - AI_VISION_LOG_RAW：是否记录模型原始返回内容（默认 1；设 0 只记摘要）
+    - AI_VISION_LOG_MAX_CHARS：单条原始内容的最大字符数，默认 4000
+    日志文件固定写在数据库同目录（data/ai_vision.log），随 data 卷持久化。
+    """
+    global _ai_log_configured
+    if _ai_log_configured:
+        return
+    logger = logging.getLogger('baby_tracker.ai')
+    level_name = str(os.environ.get('AI_VISION_LOG_LEVEL', 'INFO')).upper()
+    logger.setLevel(getattr(logging, level_name, logging.INFO))
+    logger.propagate = False
+    fmt = logging.Formatter('[%(asctime)s] %(levelname)s %(message)s')
+
+    if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+               for h in logger.handlers):
+        sh = logging.StreamHandler()
+        sh.setFormatter(fmt)
+        logger.addHandler(sh)
+
+    # 测试环境只输出到控制台，避免在临时目录/真实目录留下日志文件
+    if not app.config.get('TESTING'):
+        try:
+            log_dir = os.path.dirname(app.config['DATABASE'])
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, 'ai_vision.log')
+            if not any(isinstance(h, RotatingFileHandler) for h in logger.handlers):
+                fh = RotatingFileHandler(log_path, maxBytes=5 * 1024 * 1024,
+                                         backupCount=3, encoding='utf-8')
+                fh.setFormatter(fmt)
+                logger.addHandler(fh)
+        except OSError:
+            logger.warning('无法创建 AI 日志文件，仅输出到控制台')
+    _ai_log_configured = True
+
+
+def _ai_log_path():
+    return os.path.join(os.path.dirname(app.config['DATABASE']), 'ai_vision.log')
+
 
 @app.before_request
 def ensure_db():
@@ -3125,6 +3244,8 @@ def ensure_db():
             if not _db_initialized:
                 init_db()
                 _db_initialized = True
+    if not _ai_log_configured:
+        setup_ai_logging()
 
 
 @app.cli.command('reset-password')

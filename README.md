@@ -152,10 +152,24 @@ python -m unittest -v
 | `AI_VISION_BASE_URL` | `https://api.openai.com/v1` | AI 视觉识别服务的 OpenAI 兼容接口地址。优先级高于管理页配置；也可在管理页设置。 |
 | `AI_VISION_API_KEY` | 空 | AI 视觉识别服务的 API Key。优先级高于管理页配置；也可在管理页设置。 |
 | `AI_VISION_MODEL` | `gpt-4o-mini` | AI 视觉识别使用的模型名。优先级高于管理页配置；也可在管理页设置。 |
+| `AI_VISION_MAX_TOKENS` | 不设置（使用服务商默认） | 单次响应最大输出 token。默认不下发该参数，由服务商/模型决定；记录较多时可在管理页「AI 识别配置」或此变量中显式设置（256~32768）。 |
+| `AI_VISION_TIMEOUT` | 不设置（不限时） | 单次 AI 请求的超时秒数。默认不设超时，避免长耗时识别被提前中断；如需保护可设为如 `120`。 |
+| `AI_VISION_LOG_LEVEL` | `INFO` | AI 识别日志级别（`DEBUG` / `INFO` / `WARNING` / `ERROR`）。 |
+| `AI_VISION_LOG_RAW` | `1` | 是否记录模型原始返回内容。设为 `0` 只记录摘要（请求、耗时、条数、告警），适合不希望落库记录内容的场景。 |
+| `AI_VISION_LOG_MAX_CHARS` | `4000` | 单条日志中原始返回内容的最大字符数，超出部分截断。 |
 
 ### SQLite 持久化
 
 运行数据库固定为 `data/baby.db`，应用首次启动时自动创建。Docker 部署必须挂载 `/app/data`，否则重建容器后数据会丢失。
+
+### AI 识别日志
+
+AI 拍照识别的调用与返回会写入日志，便于排查「识别失败 / 结果不准 / 返回非 JSON」等问题：
+
+- **输出位置**：容器标准输出（`docker logs baby_tracker`）+ `data/ai_vision.log`（随 `data` 卷持久化，5MB × 3 份滚动）；
+- **记录内容**：请求地址与模型、耗时、HTTP 状态、模型原始返回内容、逐条解析结果（类型/时间/告警）、失败原因；
+- **不记录**：图片本身、API Key（日志中会做脱敏）；
+- **在线查看**：管理页 → 「AI 识别日志」卡片，管理员可直接查看最近 100/200/500 行，或调用 `GET /api/ai/logs?lines=200`。
 
 SQLite 启用了 WAL 模式，数据库运行时可能同时存在 `baby.db-wal` 和 `baby.db-shm` 文件。推荐使用管理面板中的 JSON 备份功能；如果直接复制数据库文件，应先停止容器，确保 WAL 中的数据已写入主数据库。
 
@@ -208,7 +222,7 @@ switch:
 | 疫苗与健康 | `/api/vaccine/*`、`/api/health/*`、`/api/countdowns` | 疫苗、随访和倒数日 |
 | 用户与审计 | `/api/users/*`、`/api/audit-logs` | 用户审批、管理和操作日志 |
 | 数据管理 | `/api/export/csv`、`/api/backup/export`、`/api/backup/restore` | 导出、备份和恢复 |
-| AI 识别 | `/api/ai/status`、`/api/ai/config`、`/api/ai/recognize` | 配置读取、通用配置管理和拍照识别（返回候选记录，不入库） |
+| AI 识别 | `/api/ai/status`、`/api/ai/config`、`/api/ai/recognize`、`/api/ai/logs` | 配置读取、通用配置管理、拍照识别（返回候选记录，不入库）与识别日志查看 |
 | 批量录入 | `/api/records/batch` | 总览确认后一次性写入多条记录，单事务、失败整批回滚 |
 | Home Assistant | `/api/ha/status`、`/api/ha/last-feed`、`/api/ha/button/<id>` | HA 传感器和快速记录开关 |
 

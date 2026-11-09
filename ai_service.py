@@ -9,14 +9,41 @@
 """
 
 import json
+import logging
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, date
 
 DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 DEFAULT_MODEL = 'gpt-4o-mini'
+
+# 供排查问题的 AI 调用日志（handler 由 app.py 配置：控制台 + data/ai_vision.log）
+log = logging.getLogger('baby_tracker.ai')
+
+# 单条日志里原始响应的最大字符数（可通过环境变量调整）
+def _log_max_chars():
+    try:
+        return max(200, int(os.environ.get('AI_VISION_LOG_MAX_CHARS', '4000')))
+    except (TypeError, ValueError):
+        return 4000
+
+
+def _log_truncate(text):
+    """截断过长文本，避免日志被超大响应撑爆。"""
+    s = '' if text is None else str(text)
+    limit = _log_max_chars()
+    if len(s) <= limit:
+        return s
+    return '%s …<已截断，共 %d 字符>' % (s[:limit], len(s))
+
+
+def _log_raw_enabled():
+    """是否记录 AI 原始返回内容（默认开启；设为 0 可只记摘要）。"""
+    return str(os.environ.get('AI_VISION_LOG_RAW', '1')).strip().lower() not in ('0', 'false', 'no', 'off')
+
 
 ALLOWED_TYPES = ('feed', 'excrete', 'symptom', 'supplement')
 
@@ -33,6 +60,36 @@ RECORD_KEYS = (
     'temperature', 'note', 'timestamp', 'food_unit',
     'confidence', 'warnings', 'raw_text', 'valid', 'errors',
 )
+
+
+MIN_MAX_TOKENS = 256
+MAX_MAX_TOKENS = 32768
+
+
+def _coerce_max_tokens(value):
+    """把配置值转成合法的 max_tokens；未配置/非法返回 None（表示不主动限制）。"""
+    if value is None or value == '':
+        return None
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    if n < MIN_MAX_TOKENS:
+        return MIN_MAX_TOKENS
+    if n > MAX_MAX_TOKENS:
+        return MAX_MAX_TOKENS
+    return n
+
+
+def _coerce_timeout(value):
+    """把配置值转成正的秒数；未配置/非法返回 None（表示不主动设超时）。"""
+    if value is None or value == '':
+        return None
+    try:
+        n = int(float(value))
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
 
 
 def get_effective_config(settings_dict):
@@ -67,10 +124,23 @@ def get_effective_config(settings_dict):
         api_key = ''
         key_source = 'none'
 
+    # 最大输出 token / 超时：默认都不设置（交给服务商与模型默认），
+    # 只有显式配置（env 或管理页）时才下发给请求。
+    max_tokens = (
+        _coerce_max_tokens(os.environ.get('AI_VISION_MAX_TOKENS'))
+        or _coerce_max_tokens(settings_dict.get('ai_vision_max_tokens'))
+    )
+    timeout = (
+        _coerce_timeout(os.environ.get('AI_VISION_TIMEOUT'))
+        or _coerce_timeout(settings_dict.get('ai_vision_timeout'))
+    )
+
     return {
         'base_url': base_url,
         'model': model,
         'api_key': api_key,
+        'max_tokens': max_tokens,
+        'timeout': timeout,
         'key_source': key_source,
         'configured': bool(base_url and api_key),
     }
@@ -84,9 +154,65 @@ def mask_key(key):
     return '****' + key[-4:]
 
 
-def call_chat_completions(config, messages, timeout=60):
+def _max_tokens(config=None):
+    """取当前生效的最大输出 token；未配置返回 None（表示不主动限制）。"""
+    if isinstance(config, dict):
+        value = _coerce_max_tokens(config.get('max_tokens'))
+        if value:
+            return value
+    return _coerce_max_tokens(os.environ.get('AI_VISION_MAX_TOKENS'))
+
+
+def _timeout(config=None, override=None):
+    """取当前生效的超时秒数；未配置返回 None（表示不主动设超时）。"""
+    if override is not None:
+        return _coerce_timeout(override)
+    if isinstance(config, dict):
+        value = _coerce_timeout(config.get('timeout'))
+        if value:
+            return value
+    return _coerce_timeout(os.environ.get('AI_VISION_TIMEOUT'))
+
+
+def _get_finish_reason(result):
+    try:
+        return result['choices'][0].get('finish_reason')
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return None
+
+
+def _get_usage(result):
+    try:
+        usage = result.get('usage') or {}
+    except AttributeError:
+        return None
+    if not isinstance(usage, dict):
+        return None
+    picked = {k: usage.get(k) for k in ('prompt_tokens', 'completion_tokens', 'total_tokens') if k in usage}
+    return picked or None
+
+
+def build_request_body(config, messages):
+    """构造 /chat/completions 请求体。
+
+    默认**不下发** max_tokens（交给服务商与模型默认），只有显式配置时才带上，
+    避免人为限制导致返回被截断。
+    """
+    body = {
+        'model': (config or {}).get('model') or DEFAULT_MODEL,
+        'messages': messages,
+        'temperature': 0.1,
+    }
+    limit = _max_tokens(config)
+    if limit:
+        body['max_tokens'] = limit
+    return body
+
+
+def call_chat_completions(config, messages, timeout=None):
     """向 OpenAI 兼容 /chat/completions 发 POST，返回解析后的 JSON。
 
+    默认不设超时（由 AI_VISION_TIMEOUT 或调用方显式指定）；
     错误统一转成 RuntimeError（友好中文），不泄漏堆栈 / 密钥。
     """
     config = config or {}
@@ -95,12 +221,7 @@ def call_chat_completions(config, messages, timeout=60):
     model = config.get('model') or DEFAULT_MODEL
     url = base_url + '/chat/completions'
 
-    body = {
-        'model': model,
-        'messages': messages,
-        'temperature': 0.1,
-        'max_tokens': 2000,
-    }
+    body = build_request_body(config, messages)
     data = json.dumps(body, ensure_ascii=False).encode('utf-8')
     req = urllib.request.Request(
         url,
@@ -112,32 +233,80 @@ def call_chat_completions(config, messages, timeout=60):
         },
     )
 
+    effective_timeout = _timeout(config, timeout)
+
+    has_image = any(
+        isinstance(m.get('content'), list) and
+        any(isinstance(part, dict) and part.get('type') == 'image_url' for part in m.get('content') or [])
+        for m in messages if isinstance(m, dict)
+    )
+    log.info('AI 请求 → %s model=%s max_tokens=%s timeout=%s messages=%d image=%s',
+             url, model, body.get('max_tokens', '默认(不限制)'),
+             ('%ss' % effective_timeout) if effective_timeout else '默认(不设超时)',
+             len(messages), 'yes' if has_image else 'no')
+
+    started = time.monotonic()
+
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        if effective_timeout:
+            resp_ctx = urllib.request.urlopen(req, timeout=effective_timeout)
+        else:
+            resp_ctx = urllib.request.urlopen(req)
+        with resp_ctx as resp:
+            status = getattr(resp, 'status', 200)
             raw = resp.read().decode('utf-8', errors='replace')
     except urllib.error.HTTPError as e:
+        elapsed_ms = (time.monotonic() - started) * 1000
         # 读取上游错误 body，提取可读的错误信息
         try:
             err_body = e.read().decode('utf-8', errors='replace')
         except Exception:
             err_body = ''
+        log.error('AI 响应失败 HTTP=%s elapsed=%dms body=%s',
+                  e.code, round(elapsed_ms), _log_truncate(_redact_key(err_body, api_key)))
         upstream = _extract_upstream_error(err_body)
         upstream = _redact_key(upstream, api_key)
         raise RuntimeError('AI 服务返回 HTTP %s%s' % (e.code, ('：' + upstream) if upstream else '，请检查配置'))
     except urllib.error.URLError as e:
+        elapsed_ms = (time.monotonic() - started) * 1000
         reason = getattr(e, 'reason', e)
+        log.error('AI 请求失败（网络） elapsed=%dms reason=%s', round(elapsed_ms), _log_truncate(_redact_key(str(reason), api_key)))
         if 'timed out' in str(reason).lower() or isinstance(reason, TimeoutError):
             raise RuntimeError('连接 AI 服务超时，请稍后重试')
         raise RuntimeError('无法连接 AI 服务：%s' % reason)
     except TimeoutError:
+        elapsed_ms = (time.monotonic() - started) * 1000
+        log.error('AI 请求超时 elapsed=%dms timeout=%ss', round(elapsed_ms), effective_timeout or '未设置')
         raise RuntimeError('连接 AI 服务超时，请稍后重试')
     except OSError as e:
+        elapsed_ms = (time.monotonic() - started) * 1000
+        log.error('AI 请求网络错误 elapsed=%dms error=%s', round(elapsed_ms), e)
         raise RuntimeError('网络错误：%s' % e)
 
+    elapsed_ms = (time.monotonic() - started) * 1000
+    # 部分服务商在 header 里回传请求 id，便于对账排查
+    req_id = ''
     try:
-        return json.loads(raw)
+        req_id = resp.headers.get('x-request-id') or resp.headers.get('request-id') or ''
+    except Exception:
+        req_id = ''
+    log.info('AI 响应 ← HTTP=%s elapsed=%dms bytes=%d%s',
+             status, round(elapsed_ms), len(raw), (' request_id=' + req_id) if req_id else '')
+
+    try:
+        parsed = json.loads(raw)
     except (ValueError, TypeError):
+        log.error('AI 返回内容不是有效 JSON，原始内容：%s', _log_truncate(_redact_key(raw, api_key)))
         raise RuntimeError('AI 服务返回内容不是有效 JSON')
+
+    finish = _get_finish_reason(parsed)
+    usage = _get_usage(parsed)
+    log.info('AI 返回 finish_reason=%s usage=%s', finish, usage)
+    if finish == 'length':
+        limit = _max_tokens(config)
+        log.warning('AI 返回被长度上限截断（max_tokens=%s，completion_tokens=%s），输出不完整',
+                    limit if limit else '服务商/模型默认', (usage or {}).get('completion_tokens'))
+    return parsed
 
 
 def _redact_key(text, api_key):
@@ -171,7 +340,11 @@ def _extract_upstream_error(body):
 
 
 def test_connection(config):
-    """发一条极小的纯文本 messages 验证连通性，返回 (ok, message)。"""
+    """发一条极小的纯文本 messages 验证连通性，返回 (ok, message)。
+
+    这里刻意保留 20s 上限：连通性测试是管理员主动点的按钮，
+    不能因为目标地址无响应让页面一直转圈。
+    """
     messages = [{'role': 'user', 'content': '请只回复 OK 两个字符。'}]
     try:
         result = call_chat_completions(config, messages, timeout=20)
@@ -203,7 +376,8 @@ formula（配方奶/奶粉/牛奶）、breast_left（母乳左/左乳）、breas
 - time 尽量用 HH:MM（24 小时制），无法判断则留空。
 - amount 为毫升 / 克等数值，duration 为分钟数值，temperature 为摄氏度数值，只填数字不带单位。
 - 无法判断的字段留空（空字符串或 null），不要编造数据。
-- raw_text 填该条记录对应的图片原文片段。
+- raw_text 填该条记录对应的图片原文片段，控制在 20 字以内。
+- 输出尽量精简：只写有值的字段，没有值就省略或留空，不要输出解释、注释或多余字段。
 - confidence 为该条记录 0~1 的置信度。
 - 图中没有记录时返回 {"records":[]}。
 """
@@ -231,20 +405,55 @@ def recognize_image(image_data_url, date_str, config=None):
         {'role': 'user', 'content': user_content},
     ]
 
+    started = time.monotonic()
+    log.info('开始识别图片：date=%s image_data_url_chars=%d', date_str, len(image_data_url or ''))
     result = call_chat_completions(config, messages)
     content = _get_message_content(result)
-    parsed = _parse_json_content(content)
+    elapsed_ms = (time.monotonic() - started) * 1000
+
+    # 关键排查信息：模型原始返回内容（默认记录，可用 AI_VISION_LOG_RAW=0 关闭）
+    if _log_raw_enabled():
+        log.info('AI 识别原始内容 elapsed=%dms：\n%s', round(elapsed_ms), _log_truncate(content))
+    else:
+        log.info('AI 识别原始内容已省略（AI_VISION_LOG_RAW=0），长度=%d', len(content or ''))
+
+    # 输出被长度上限截断时 JSON 必然不完整，直接给出可操作的错误，而不是笼统的「不是有效 JSON」
+    if _get_finish_reason(result) == 'length':
+        limit = _max_tokens(config)
+        log.error('AI 输出被长度上限截断（max_tokens=%s，已输出 %d 字符），请调大最大输出 token 或拆分图片',
+                  limit if limit else '服务商/模型默认', len(content or ''))
+        where = ('当前 max_tokens=%d' % limit) if limit else '当前未设置 max_tokens（使用服务商默认上限）'
+        raise RuntimeError(
+            'AI 输出被长度上限截断（%s）：请到管理页「AI 识别配置」调大「最大输出 token」'
+            '（或设置环境变量 AI_VISION_MAX_TOKENS），或把记录较多的一张图拆成多张拍摄' % where)
+
+    try:
+        parsed = _parse_json_content(content)
+    except RuntimeError:
+        log.error('AI 返回内容无法解析为 JSON（可能是模型未按格式输出或被截断）')
+        raise
     raw_records = parsed.get('records') if isinstance(parsed, dict) else None
     if not isinstance(raw_records, list):
+        log.error('AI 返回 JSON 缺少 records 数组，实际结构：%s', _log_truncate(parsed))
         raise RuntimeError('AI 返回内容不是有效 JSON')
 
-    return normalize_records(raw_records, date_str)
+    records = normalize_records(raw_records, date_str)
+    valid_count = sum(1 for r in records if r.get('valid'))
+    log.info('AI 识别完成：共 %d 条，有效 %d 条', len(records), valid_count)
+    # 逐条记录摘要，便于定位「哪一条、为什么被标黄/无效」
+    for idx, r in enumerate(records, 1):
+        if r.get('warnings') or r.get('errors'):
+            log.info('  #%d type=%s sub_type=%s amount=%s ts=%s valid=%s warnings=%s errors=%s',
+                     idx, r.get('type'), r.get('sub_type'), r.get('amount'),
+                     r.get('timestamp'), r.get('valid'), r.get('warnings'), r.get('errors'))
+    return records
 
 
 def _get_message_content(result):
     try:
         return result['choices'][0]['message']['content']
     except (KeyError, IndexError, TypeError):
+        log.error('AI 响应缺少 choices[0].message.content，响应摘要：%s', _log_truncate(result))
         raise RuntimeError('AI 返回内容缺少 choices.message.content')
 
 

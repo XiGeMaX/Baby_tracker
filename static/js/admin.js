@@ -510,10 +510,12 @@ async function loadAiConfig() {
         const cfg = await api('/api/ai/config');
         const baseEl = document.getElementById('ai-base-url');
         const modelEl = document.getElementById('ai-model');
+        const maxEl = document.getElementById('ai-max-tokens');
         const keyEl = document.getElementById('ai-api-key');
         const statusEl = document.getElementById('ai-status-text');
         if (baseEl) baseEl.value = cfg.base_url || '';
         if (modelEl) modelEl.value = cfg.model || '';
+        if (maxEl) maxEl.value = cfg.max_tokens || '';
         if (keyEl) {
             keyEl.value = '';
             // placeholder 动态显示已配置的掩码，或提示留空
@@ -541,6 +543,18 @@ async function saveAiConfig() {
         base_url: (document.getElementById('ai-base-url')?.value || '').trim(),
         model: (document.getElementById('ai-model')?.value || '').trim(),
     };
+    const maxRaw = (document.getElementById('ai-max-tokens')?.value || '').trim();
+    if (maxRaw) {
+        const n = parseInt(maxRaw, 10);
+        if (!Number.isFinite(n) || n < 256 || n > 32768) {
+            showToast('最大输出 token 需在 256 ~ 32768 之间，或留空表示不限制');
+            return;
+        }
+        data.max_tokens = n;
+    } else {
+        // 显式传空字符串：清除限制，交回服务商/模型默认
+        data.max_tokens = '';
+    }
     const key = document.getElementById('ai-api-key')?.value || '';
     if (key) data.api_key = key;   // 留空表示不修改现有密钥
     try {
@@ -572,6 +586,27 @@ async function testAiConfig() {
             btn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i> 测试连接';
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
+    }
+}
+
+// ── AI 识别日志（排查问题） ──────────────────────────────
+async function loadAiLogs() {
+    const out = document.getElementById('ai-log-output');
+    if (!out) return;
+    const linesEl = document.getElementById('ai-log-lines');
+    const lines = (linesEl && linesEl.value) || 200;
+    out.textContent = '加载中…';
+    try {
+        const data = await api(`/api/ai/logs?lines=${lines}`);
+        if (!data || data.exists === false) {
+            out.textContent = (data && data.hint) || '还没有日志，发起一次拍照识别后即可在此查看';
+            return;
+        }
+        const text = (data.lines && data.lines.length) ? data.lines.join('\n') : '日志为空';
+        out.textContent = text;
+        out.scrollTop = out.scrollHeight;   // 滚到最新一条
+    } catch (e) {
+        out.textContent = '加载失败：' + (e.message || '请重试');
     }
 }
 

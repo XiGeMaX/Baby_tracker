@@ -14,6 +14,8 @@ let batchBusy = false;
 let batchRecognizing = false;
 let batchAbort = null;          // 当前识别请求的 AbortController
 let _batchModal = null;
+let _batchStatusTimer = null;   // 识别中「已等待 N 秒」计时器
+let _batchStatusStart = 0;
 
 // 这些字段的变更需要重建行 DOM（联动选项 / 显隐），其余字段只写回模型。
 const _BATCH_STRUCTURAL = new Set(['_selected', 'type', 'sub_type', 'food_unit']);
@@ -118,7 +120,7 @@ function _ensureBatchModal() {
                 </div>
                 <div id="batch-status" class="hidden items-center gap-2 text-xs text-text-secondary">
                     <i data-lucide="loader-2" class="w-4 h-4 animate-spin text-accent"></i>
-                    <span>AI 识别中…</span>
+                    <span id="batch-status-text">AI 识别中…</span>
                     <button id="batch-cancel-recog" data-batch-act="cancel-recog" class="btn-secondary text-xs px-2 py-1 ml-2">取消</button>
                 </div>
             </div>
@@ -211,13 +213,32 @@ function closeBatchModal() {
 // ── 状态条 / 汇总条 / 列表渲染 ─────────────────────────────
 function _batchRenderStatus() {
     const el = document.getElementById('batch-status');
+    const textEl = document.getElementById('batch-status-text');
     if (!el) return;
     if (batchRecognizing) {
         el.classList.remove('hidden');
         el.classList.add('flex');
+        _batchStatusStart = Date.now();
+        if (textEl) textEl.textContent = 'AI 识别中… 已等待 0 秒';
+        if (_batchStatusTimer) clearInterval(_batchStatusTimer);
+        _batchStatusTimer = setInterval(() => {
+            if (!batchRecognizing) {
+                clearInterval(_batchStatusTimer);
+                _batchStatusTimer = null;
+                return;
+            }
+            const sec = Math.floor((Date.now() - _batchStatusStart) / 1000);
+            const t = document.getElementById('batch-status-text');
+            if (t) t.textContent = `AI 识别中… 已等待 ${sec} 秒`;
+        }, 1000);
     } else {
         el.classList.add('hidden');
         el.classList.remove('flex');
+        if (_batchStatusTimer) {
+            clearInterval(_batchStatusTimer);
+            _batchStatusTimer = null;
+        }
+        if (textEl) textEl.textContent = 'AI 识别中…';
     }
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
@@ -731,6 +752,7 @@ async function _batchHandleFiles(files) {
     _batchRenderStatus();
 
     let added = 0;
+    let failed = false;
     try {
         for (const file of files) {
             if (controller.signal.aborted) break;
@@ -743,10 +765,11 @@ async function _batchHandleFiles(files) {
             }
             if (controller.signal.aborted) break;
             try {
+                // 不设前端超时：视觉识别可能耗时数分钟（后端默认同样不限时），
+                // 由用户的「取消」按钮或页面关闭来终止，避免请求已完成但结果被丢弃。
                 const res = await api('/api/ai/recognize', {
                     method: 'POST',
                     body: JSON.stringify({ image: image, date: batchDate }),
-                    timeoutMs: 60000,
                     signal: controller.signal,
                 });
                 const records = (res && Array.isArray(res.records)) ? res.records : [];
@@ -754,7 +777,13 @@ async function _batchHandleFiles(files) {
                 added += records.length;
             } catch (e) {
                 if (controller.signal.aborted || e.isCancelled || e.name === 'AbortError') break;
-                showToast(`识别失败：${e.message || '请重试'}`);
+                // 超时（若部署方显式配置了网关/代理超时）单独提示，避免误以为识别失败
+                if (e.isTimeout) {
+                    showToast('识别超时：请求仍可能已在服务端完成，请稍后重试或检查网络');
+                } else {
+                    showToast(`识别失败：${e.message || '请重试'}`);
+                }
+                failed = true;
                 break;
             }
         }
@@ -763,8 +792,12 @@ async function _batchHandleFiles(files) {
         batchRecognizing = false;
         if (batchAbort === controller) batchAbort = null;
         _batchRenderStatus();
-        _batchRenderList();
-        if (!controller.signal.aborted) {
+        _batchRenderList();   // 无论成功/失败/取消，都把已拿到的候选行渲染出来
+        if (controller.signal.aborted) {
+            showToast('已取消识别');
+        } else if (failed) {
+            // 失败提示已在上面 showToast，这里不覆盖
+        } else {
             showToast(added > 0 ? `已添加 ${added} 条候选记录，请核对` : '未识别到记录，可手动添加');
         }
     }

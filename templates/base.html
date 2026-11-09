@@ -132,10 +132,11 @@
         </button>
     </div>
 
-    <!-- Toast 通知 -->
-    <div id="toast" class="fixed top-4 right-4 z-[100] hidden">
-        <div class="bg-accent/10 border border-accent/30 text-accent px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm flex items-center gap-2">
-            <i data-lucide="check-circle" class="w-4 h-4"></i>
+    <!-- Toast 通知：移动端底部居中（避开右上角主操作按钮与右下角悬浮菜单），桌面端右上角。
+         pointer-events-none 确保提示条不会拦截下方按钮的点击。 -->
+    <div id="toast" class="fixed z-[100] hidden pointer-events-none w-max max-w-[calc(100vw-1.5rem)] left-1/2 -translate-x-1/2 bottom-24 sm:bottom-auto sm:left-auto sm:right-4 sm:top-4 sm:translate-x-0">
+        <div class="toast-box bg-accent/10 border border-accent/30 text-accent px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm flex items-center gap-2">
+            <i data-lucide="check-circle" class="w-4 h-4 flex-shrink-0"></i>
             <span id="toast-msg" class="text-sm font-medium"></span>
         </div>
     </div>
