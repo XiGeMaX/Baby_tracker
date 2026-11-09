@@ -295,8 +295,14 @@ function _batchSubtypeOptions(type, current, customMode) {
     if (current && current !== '_custom' && !known.has(current)) {
         opts.push({ value: current, label: current });
     }
-    return opts.map(o => {
-        const selected = customMode ? (o.value === '_custom') : (o.value === current);
+    // 关键：值为空时必须插入占位项。
+    // 否则 <select> 会自动显示第一个选项（如 feed 的「母乳(左)」），
+    // 造成「界面看着已填、实际值为空」的假象，提交时才报缺少子类型。
+    const placeholder = (!customMode && !current)
+        ? '<option value="" selected disabled>请选择子类型</option>' : '';
+    return placeholder + opts.map(o => {
+        const selected = (!customMode && !current) ? false
+            : (customMode ? (o.value === '_custom') : (o.value === current));
         return `<option value="${esc(o.value)}" ${selected ? 'selected' : ''}>${esc(o.label)}</option>`;
     }).join('');
 }
@@ -804,8 +810,40 @@ async function _batchHandleFiles(files) {
 }
 
 // ── 提交 ─────────────────────────────────────────────────
+
+// 提交前以页面上的实际值为准回写模型。
+// 防止「<select> 显示首项但 row 里仍是空串」这类显示/数据不同步，
+// 导致明明界面上看着都填好了、提交却报「缺少类型或子类型」。
+function _batchSyncFromDom() {
+    const list = document.getElementById('batch-list');
+    if (!list) return;
+    list.querySelectorAll('[data-batch-row][data-batch-field]').forEach(el => {
+        const i = parseInt(el.dataset.batchRow, 10);
+        const row = batchRows[i];
+        if (!row) return;
+        const field = el.dataset.batchField;
+        if (field === 'type' || field === 'sub_type' || field === 'food_unit') {
+            // 占位项的值为空，不回写（保持「未选择」语义，由校验拦下并提示）
+            if (el.value !== '') row[field] = el.value;
+        }
+    });
+}
+
+// 校验失败时提示并把该行滚动到可视区域，避免用户在几十行里找不到是哪一条
+function _batchFocusRow(i, message) {
+    showToast(message);
+    const rowEl = document.querySelector(`[data-batch-row-wrap="${i}"]`);
+    if (rowEl) {
+        rowEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        rowEl.style.transition = 'box-shadow 0.2s';
+        rowEl.style.boxShadow = '0 0 0 2px var(--c-accent)';
+        setTimeout(() => { rowEl.style.boxShadow = ''; }, 1600);
+    }
+}
+
 async function _batchSubmit() {
     if (batchBusy) return;
+    _batchSyncFromDom();   // 先对齐界面与数据模型
     const selectedIdx = [];
     batchRows.forEach((r, i) => {
         if (r._selected && r.valid !== false) selectedIdx.push(i);
@@ -817,9 +855,10 @@ async function _batchSubmit() {
     for (const i of selectedIdx) {
         const r = batchRows[i];
         const no = i + 1;
-        if (r.valid === false) { showToast(`第 ${no} 条识别结果无效，请修正后再录入`); return; }
-        if (!r.type || !r.sub_type) { showToast(`第 ${no} 条缺少类型或子类型`); return; }
-        if (!_batchValidTimestamp(r.timestamp)) { showToast(`第 ${no} 条时间无效`); return; }
+        if (r.valid === false) { _batchFocusRow(i, `第 ${no} 条识别结果无效，请修正后再录入`); return; }
+        if (!r.type) { _batchFocusRow(i, `第 ${no} 条缺少记录类型`); return; }
+        if (!r.sub_type) { _batchFocusRow(i, `第 ${no} 条缺少子类型`); return; }
+        if (!_batchValidTimestamp(r.timestamp)) { _batchFocusRow(i, `第 ${no} 条时间无效`); return; }
     }
 
     const toNum = v => (v === '' || v === null || v === undefined || isNaN(parseFloat(v))) ? null : parseFloat(v);

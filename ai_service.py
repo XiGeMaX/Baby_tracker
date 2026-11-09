@@ -658,6 +658,10 @@ def _normalize_one(raw, date_str):
     sub_type, sub_warn = _map_sub_type(raw.get('sub_type'))
     if sub_warn:
         warnings.append(sub_warn)
+    # 子类型为空属于「无法直接录入」的硬性问题（批量提交要求非空），
+    # 标记为 error 而非 warning，避免前端显示 valid=true 却保存失败。
+    if not sub_type:
+        errors.append('缺少子类型，请手动选择')
 
     amount, amt_bad = _to_number(raw.get('amount'))
     if amt_bad:

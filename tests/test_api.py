@@ -569,5 +569,15 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(captured['max_tokens'], 20000)
 
 
+    def test_empty_sub_type_is_invalid_not_just_warning(self):
+        """子类型为空必须是 error（前端要据此提示修正），而不是仅 warning。"""
+        rec = ai_service.normalize_records([{
+            'type': 'feed', 'sub_type': '', 'amount': 60, 'time': '08:00',
+        }], '2026-11-09')[0]
+        self.assertEqual(rec['sub_type'], '')
+        self.assertFalse(rec['valid'])
+        self.assertTrue(any('子类型' in e for e in rec['errors']))
+
+
 if __name__ == '__main__':
     unittest.main()
