@@ -1,4 +1,4 @@
-const CACHE_NAME = 'baby-tracker-v3';
+const CACHE_NAME = 'baby-tracker-v4';
 const STATIC_ASSETS = [
     '/',
     '/static/css/style.css',
@@ -10,6 +10,7 @@ const STATIC_ASSETS = [
     '/static/js/vaccine.js',
     '/static/js/admin.js',
     '/static/js/batch.js',
+    '/static/js/records-table.js',
     '/static/manifest.json',
     '/static/icons/icon-192.png',
     '/static/icons/icon-512.png',

@@ -476,7 +476,23 @@ async function loadSettings() {
             document.getElementById('custom-target').value = settings.custom_daily_target;
         }
         document.getElementById('feeds-per-day').value = settings.feeds_per_day || 8;
+        const modeEl = document.getElementById('record-view-mode');
+        if (modeEl) modeEl.value = (settings.record_view_mode === 'card') ? 'card' : 'table';
     } catch (e) { /* ignore */ }
+}
+
+async function saveRecordViewMode() {
+    const el = document.getElementById('record-view-mode');
+    if (!el) return;
+    try {
+        await api('/api/settings', {
+            method: 'PUT',
+            body: JSON.stringify({ record_view_mode: el.value })
+        });
+        showToast('展示方式已保存');
+    } catch (e) {
+        showToast('保存失败: ' + e.message);
+    }
 }
 
 async function saveSettings() {

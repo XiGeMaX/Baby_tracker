@@ -109,11 +109,14 @@
 
     <!-- 最近记录 -->
     <div>
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center justify-between mb-3 gap-2">
             <h2 class="text-sm font-medium text-text-secondary">最近记录</h2>
-            <a href="/vaccine" class="text-xs text-text-muted hover:text-accent transition-colors">全部日程</a>
+            <div class="flex items-center gap-2">
+                <span id="recent-view-toggle"></span>
+                <a href="/vaccine" class="text-xs text-text-muted hover:text-accent transition-colors whitespace-nowrap">全部日程</a>
+            </div>
         </div>
-        <div class="space-y-2" id="recent-records">
+        <div id="recent-records">
             <div class="card text-center text-text-muted text-sm py-8">
                 <p>暂无记录</p>
             </div>

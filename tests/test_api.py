@@ -578,6 +578,23 @@ class ApiTestCase(unittest.TestCase):
         self.assertFalse(rec['valid'])
         self.assertTrue(any('子类型' in e for e in rec['errors']))
 
+    # ── 记录列表展示方式设置 ─────────────────────────────────
+
+    def test_record_view_mode_default_is_table(self):
+        settings = self.client.get('/api/settings').get_json()
+        self.assertEqual(settings.get('record_view_mode'), 'table')
+
+    def test_record_view_mode_save_and_validate(self):
+        self._login_admin()
+        resp = self.client.put('/api/settings', json={'record_view_mode': 'card'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.client.get('/api/settings').get_json()['record_view_mode'], 'card')
+        # 非法值拒绝
+        resp = self.client.put('/api/settings', json={'record_view_mode': 'grid'})
+        self.assertEqual(resp.status_code, 400)
+        # 未改动
+        self.assertEqual(self.client.get('/api/settings').get_json()['record_view_mode'], 'card')
+
 
 if __name__ == '__main__':
     unittest.main()

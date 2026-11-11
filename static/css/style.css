@@ -9,6 +9,15 @@
     --c-text-primary: #f1f5f9;
     --c-text-secondary: #94a3b8;
     --c-text-muted: #64748b;
+    /* RGB 三元组：供 Tailwind 透明度修饰符（bg-accent/10 等）使用，值必须与上方 hex 一致 */
+    --c-base-rgb: 10 15 26;
+    --c-surface-rgb: 17 24 39;
+    --c-border-rgb: 30 41 59;
+    --c-accent-rgb: 0 229 160;
+    --c-accent-dim-rgb: 0 179 126;
+    --c-text-primary-rgb: 241 245 249;
+    --c-text-secondary-rgb: 148 163 184;
+    --c-text-muted-rgb: 100 116 139;
     --c-input-bg: #0a0f1a;
     --c-hover-overlay: rgba(255,255,255,0.05);
     --c-shadow: rgba(0,0,0,0.3);
@@ -26,6 +35,15 @@
     --c-text-primary: #0f172a;
     --c-text-secondary: #475569;
     --c-text-muted: #94a3b8;
+    /* RGB 三元组：供 Tailwind 透明度修饰符（bg-accent/10 等）使用，值必须与上方 hex 一致 */
+    --c-base-rgb: 241 245 249;
+    --c-surface-rgb: 255 255 255;
+    --c-border-rgb: 226 232 240;
+    --c-accent-rgb: 5 150 105;
+    --c-accent-dim-rgb: 4 120 87;
+    --c-text-primary-rgb: 15 23 42;
+    --c-text-secondary-rgb: 71 85 105;
+    --c-text-muted-rgb: 148 163 184;
     --c-input-bg: #f8fafc;
     --c-hover-overlay: rgba(0,0,0,0.04);
     --c-shadow: rgba(0,0,0,0.08);
@@ -560,7 +578,12 @@ input[type="time"].input-field::-webkit-date-and-time-value {
 :root { --calendar-icon-filter: invert(1); }
 [data-theme="light"] { --calendar-icon-filter: none; }
 
-/* ── Batch Entry Modal (拍照识别 / 批量录入) ────────────── */
+/* ── Records Table (总览最近记录 / 成长日程) ───────────── */
+.rec-table { min-width: max-content; }
+.rec-table th, .rec-table td { vertical-align: middle; }
+.rec-table tbody tr:hover { background: var(--c-hover-overlay); }
+.rec-table thead th { position: sticky; top: 0; background: var(--c-surface); z-index: 1; }
+
 .batch-modal {
     -webkit-overflow-scrolling: touch;
 }

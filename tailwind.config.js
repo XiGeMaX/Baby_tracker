@@ -10,14 +10,17 @@ module.exports = {
     theme: {
         extend: {
             colors: {
-                base: 'var(--c-base)',
-                surface: 'var(--c-surface)',
-                border: 'var(--c-border)',
-                accent: 'var(--c-accent)',
-                'accent-dim': 'var(--c-accent-dim)',
-                'text-primary': 'var(--c-text-primary)',
-                'text-secondary': 'var(--c-text-secondary)',
-                'text-muted': 'var(--c-text-muted)',
+                // 注意：必须用 rgb(var(--x-rgb) / <alpha-value>) 形式，
+                // 否则 Tailwind 3.x 无法为纯 var() 颜色生成 /10、/20 等透明度类（会静默缺失）。
+                // 新增颜色时需在 static/css/style.css 的两个主题块中同步维护 --c-x-rgb。
+                base: 'rgb(var(--c-base-rgb) / <alpha-value>)',
+                surface: 'rgb(var(--c-surface-rgb) / <alpha-value>)',
+                border: 'rgb(var(--c-border-rgb) / <alpha-value>)',
+                accent: 'rgb(var(--c-accent-rgb) / <alpha-value>)',
+                'accent-dim': 'rgb(var(--c-accent-dim-rgb) / <alpha-value>)',
+                'text-primary': 'rgb(var(--c-text-primary-rgb) / <alpha-value>)',
+                'text-secondary': 'rgb(var(--c-text-secondary-rgb) / <alpha-value>)',
+                'text-muted': 'rgb(var(--c-text-muted-rgb) / <alpha-value>)',
             },
             fontFamily: {
                 mono: ['JetBrains Mono', 'Consolas', 'monospace'],

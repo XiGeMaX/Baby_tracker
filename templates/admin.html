@@ -92,6 +92,23 @@
         <button class="btn-primary text-sm" onclick="saveSettings()">保存设置</button>
     </div>
 
+    <!-- 记录列表展示方式 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="table-2" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">记录列表展示方式</h2>
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">默认展示方式</label>
+            <select id="record-view-mode" class="input-field">
+                <option value="table">表格（按类型分列）</option>
+                <option value="card">卡片（原有列表）</option>
+            </select>
+            <p class="text-[10px] text-text-muted mt-1">影响总览「最近记录」与成长「日程记录列表」；表格只显示当天实际出现过的列。页面上的「表格/卡片」按钮为临时切换，不会修改此设置。</p>
+        </div>
+        <button class="btn-primary text-sm" onclick="saveRecordViewMode()">保存展示方式</button>
+    </div>
+
     <!-- AI 识别配置 -->
     <div class="card space-y-4" id="ai-config-card">
         <div class="flex items-center justify-between mb-1">

@@ -8,6 +8,11 @@ async function initDashboard() {
             year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short'
         });
     }
+    // 提前取展示方式，避免首次渲染「最近记录」时因异步请求而闪烁
+    if (typeof RecordsTable !== 'undefined') {
+        _recentViewMode = await RecordsTable.getViewMode();
+        _renderRecentViewToggle();
+    }
     await refreshDashboard();
     // PWA 快捷方式 /?action=batch：进入总览后直接打开拍照识别/批量录入弹窗
     if (new URLSearchParams(location.search).get('action') === 'batch' &&
@@ -126,14 +131,57 @@ async function quickRecord(btnId, label) {
     }
 }
 
-function renderRecentRecords(records) {
+// 最近记录：根据展示方式（系统设置 + 页面临时切换）选择表格或卡片
+let _recentViewMode = null;
+
+async function renderRecentRecords(records) {
     const container = document.getElementById('recent-records');
+    if (!container) return;
+    if (_recentViewMode === null) {
+        _recentViewMode = await RecordsTable.getViewMode();
+        _renderRecentViewToggle();
+    }
+    if (_recentViewMode === 'table') {
+        _renderRecentTable(records, container);
+    } else {
+        _renderRecentCards(records, container);
+    }
+}
+
+function _renderRecentViewToggle() {
+    const el = document.getElementById('recent-view-toggle');
+    if (!el) return;
+    el.innerHTML = RecordsTable.renderViewToggle(_recentViewMode, mode => {
+        _recentViewMode = mode;
+        if (dashboardData && dashboardData.recent_records) {
+            renderRecentRecords(dashboardData.recent_records);
+        }
+    });
+}
+
+function _renderRecentTable(records, container) {
+    if (!records || records.length === 0) {
+        container.innerHTML = `<div class="card text-center text-text-muted text-sm py-8"><p>暂无记录</p></div>`;
+        return;
+    }
+    container.innerHTML = RecordsTable.renderTable(records, {
+        onEdit: id => openEditModal(id, onDashboardEditSaved),
+        onDelete: id => deleteDashboardRecord(id),
+    });
+    RecordsTable.bindTableActions(container, {
+        onEdit: id => openEditModal(id, onDashboardEditSaved),
+        onDelete: id => deleteDashboardRecord(id),
+    });
+    lucide.createIcons();
+}
+
+function _renderRecentCards(records, container) {
     if (!records || records.length === 0) {
         container.innerHTML = `<div class="card text-center text-text-muted text-sm py-8"><p>暂无记录</p></div>`;
         return;
     }
 
-    container.innerHTML = records.map(r => {
+    container.innerHTML = '<div class="space-y-2">' + records.map(r => {
         const badgeMap = { feed: 'badge-feed', excrete: 'badge-excrete', symptom: 'badge-symptom', supplement: 'badge-supplement' };
         const typeClass = badgeMap[r.type] || 'badge-symptom';
         const bgMap = { feed: 'bg-blue-500/10', excrete: 'bg-amber-500/10', symptom: 'bg-red-500/10', supplement: 'bg-purple-500/10' };
@@ -163,7 +211,7 @@ function renderRecentRecords(records) {
                 </button>
             </div>
         </div>`;
-    }).join('');
+    }).join('') + '</div>';
 
     lucide.createIcons();
 }

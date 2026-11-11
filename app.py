@@ -203,6 +203,8 @@ def init_db():
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('custom_daily_target', '')")
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('feeds_per_day', '8')")
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('reminder_interval_min', '180')")
+    # 记录列表默认展示方式：table（表格）/ card（卡片）
+    db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('record_view_mode', 'table')")
     # 奶量估算系数（JSON格式，每个阶段: ml/kg/天）
     default_coeffs = json_module.dumps({
         'day0': 60,       # 出生当天固定值
@@ -1118,6 +1120,9 @@ def update_settings():
         return jsonify({'error': '仅管理员可修改'}), 403
     data = request.get_json()
     db = get_db()
+    # 仅接受合法的展示方式，避免写入垃圾值导致前端回退异常
+    if 'record_view_mode' in data and data['record_view_mode'] not in ('table', 'card'):
+        return jsonify({'error': '展示方式只能是 table 或 card'}), 400
     for key, value in data.items():
         db.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=?, updated_at=datetime('now','localtime')",
