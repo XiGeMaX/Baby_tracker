@@ -57,6 +57,25 @@
         return cols;
     }
 
+    // 统计行取值：有数值的列求和（带单位；单位不一致时退化为计数），
+    // 纯标记列（尿/便/症状/补充剂）统计出现次数。
+    function columnStat(records, colKey) {
+        const rows = (records || []).filter(r => r.sub_type === colKey);
+        if (!rows.length) return '';
+        let sum = 0, hasAmount = false;
+        const units = new Set();
+        rows.forEach(r => {
+            const a = (r.amount === null || r.amount === undefined || r.amount === '') ? NaN : parseFloat(r.amount);
+            if (!isNaN(a)) {
+                sum += a;
+                hasAmount = true;
+                units.add(colKey === 'solid_food' ? (r.food_unit || 'ml') : 'ml');
+            }
+        });
+        if (!hasAmount || units.size !== 1) return `${rows.length}次`;
+        return `${Math.round(sum * 100) / 100}${[...units][0]}`;
+    }
+
     // 渲染表格 HTML。opts: { onEdit(id), onDelete(id), showActions }
     function renderTable(records, opts) {
         opts = opts || {};
@@ -89,11 +108,20 @@
             </tr>`;
         }).join('');
 
+        // 底部统计行：首列「合计」，各列按 columnStat 汇总（空数据时不渲染）
+        const hasRows = (records || []).length > 0;
+        const footHtml = hasRows ? `<tr>
+            <td class="px-2 py-2 text-[11px] font-medium text-text-muted border-t border-border whitespace-nowrap">合计</td>
+            ${cols.map(c => `<td class="px-2 py-2 text-xs font-medium text-text-primary border-t border-border whitespace-nowrap">${esc(columnStat(records, c.key))}</td>`).join('')}
+            ${showActions ? '<td class="border-t border-border"></td>' : ''}
+        </tr>` : '';
+
         return `
         <div class="card p-0 overflow-x-auto">
             <table class="w-full border-collapse rec-table">
                 <thead><tr>${headHtml}</tr></thead>
                 <tbody>${rowsHtml || `<tr><td colspan="${head.length}" class="text-center text-text-muted text-sm py-8">暂无记录</td></tr>`}</tbody>
+                ${footHtml ? `<tfoot>${footHtml}</tfoot>` : ''}
             </table>
         </div>`;
     }
@@ -138,28 +166,48 @@
         return (v === 'table' || v === 'card') ? v : null;
     }
 
-    // 渲染一个「表格 / 卡片」切换控件
-    function renderViewToggle(currentMode, onChange) {
-        const id = 'view-toggle-' + Math.random().toString(36).slice(2, 8);
-        setTimeout(() => {
-            const el = document.getElementById(id);
-            if (!el || el.dataset.bound) return;
-            el.dataset.bound = 'true';
-            el.addEventListener('click', ev => {
-                const b = ev.target.closest('[data-view-mode]');
-                if (!b) return;
-                setViewModeOverride(b.dataset.viewMode);
-                if (typeof onChange === 'function') onChange(b.dataset.viewMode);
-            });
-        }, 0);
+    // 渲染「表格 / 卡片」切换控件的 HTML。
+    // 事件绑定与高亮更新由宿主容器负责：bindViewToggle(el, onChange) + 点击后自动高亮。
+    function renderViewToggle(currentMode) {
         const btn = (mode, label) =>
-            `<button data-view-mode="${mode}" class="text-[11px] px-2 py-1 rounded border whitespace-nowrap ${currentMode === mode ? 'border-accent/40 text-accent bg-accent/10' : 'border-border text-text-muted'}">${label}</button>`;
-        return `<div id="${id}" class="inline-flex items-center gap-1">${btn('table', '表格')}${btn('card', '卡片')}</div>`;
+            `<button type="button" data-view-mode="${mode}" class="text-[11px] px-2 py-1 rounded border whitespace-nowrap ${currentMode === mode ? 'border-accent/40 text-accent bg-accent/10' : 'border-border text-text-muted'}">${label}</button>`;
+        return `<span data-view-toggle="1" class="inline-flex items-center gap-1">${btn('table', '表格')}${btn('card', '卡片')}</span>`;
+    }
+
+    // 就地更新切换控件的高亮（切换展示方式后调用，避免重新渲染导致状态滞后）
+    function updateViewToggle(container, mode) {
+        if (!container || !container.querySelector) return;
+        const wrap = container.querySelector('[data-view-toggle]');
+        if (!wrap) return;
+        wrap.querySelectorAll('[data-view-mode]').forEach(b => {
+            const active = b.dataset.viewMode === mode;
+            b.classList.toggle('border-accent/40', active);
+            b.classList.toggle('text-accent', active);
+            b.classList.toggle('bg-accent/10', active);
+            b.classList.toggle('border-border', !active);
+            b.classList.toggle('text-text-muted', !active);
+        });
+    }
+
+    // 给切换控件的宿主容器绑定一次性点击事件委托（容器内 HTML 可随 innerHTML 重建，委托仍有效）
+    function bindViewToggle(container, onChange) {
+        if (!container || container.dataset.viewToggleBound) return;
+        container.dataset.viewToggleBound = 'true';
+        container.addEventListener('click', ev => {
+            const b = ev.target.closest('[data-view-mode]');
+            if (!b) return;
+            const mode = b.dataset.viewMode;
+            if (mode !== 'table' && mode !== 'card') return;
+            setViewModeOverride(mode);
+            updateViewToggle(container, mode);
+            if (typeof onChange === 'function') onChange(mode);
+        });
     }
 
     window.RecordsTable = {
-        COLUMNS, cellValue, pickColumns, renderTable, bindTableActions,
-        getViewMode, setViewModeOverride, getViewModeOverride, renderViewToggle,
+        COLUMNS, cellValue, pickColumns, columnStat, renderTable, bindTableActions,
+        getViewMode, setViewModeOverride, getViewModeOverride,
+        renderViewToggle, updateViewToggle, bindViewToggle,
         DEFAULT_MODE,
     };
 })();

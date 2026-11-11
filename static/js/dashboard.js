@@ -150,8 +150,9 @@ async function renderRecentRecords(records) {
 
 function _renderRecentViewToggle() {
     const el = document.getElementById('recent-view-toggle');
-    if (!el) return;
-    el.innerHTML = RecordsTable.renderViewToggle(_recentViewMode, mode => {
+    if (!el || typeof RecordsTable === 'undefined') return;
+    el.innerHTML = RecordsTable.renderViewToggle(_recentViewMode);
+    RecordsTable.bindViewToggle(el, mode => {
         _recentViewMode = mode;
         if (dashboardData && dashboardData.recent_records) {
             renderRecentRecords(dashboardData.recent_records);

@@ -1285,7 +1285,8 @@ function _renderScheduleRecordCards(records) {
 function _renderScheduleViewToggle() {
     const el = document.getElementById('schedule-view-toggle');
     if (!el || typeof RecordsTable === 'undefined') return;
-    el.innerHTML = RecordsTable.renderViewToggle(_scheduleViewMode, mode => {
+    el.innerHTML = RecordsTable.renderViewToggle(_scheduleViewMode);
+    RecordsTable.bindViewToggle(el, mode => {
         _scheduleViewMode = mode;
         if (_lastScheduleRenderArgs) {
             const a = _lastScheduleRenderArgs;
