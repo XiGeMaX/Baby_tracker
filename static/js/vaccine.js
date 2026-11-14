@@ -1,13 +1,21 @@
 // ── Vaccine Page ─────────────────────────────────────────
 let vaccineData = null;
 
-function initVaccine() {
+let _scheduleViewMode = null;      // 当前记录列表展示方式
+let _lastScheduleRenderArgs = null; // 供临时切换后重绘
+
+async function initVaccine() {
     // 重置 Tab 状态及事件委托标志，保证 SPA 重新进入时可重入
     _currentTab = 'schedule';
     _healthLoaded = false;
     _countdownLoaded = false;
     _vaccineDelegateBound = false;
     _scheduleLoaded = false;
+    // 提前取展示方式，避免首次渲染「记录列表」时因异步请求而闪烁
+    if (typeof RecordsTable !== 'undefined') {
+        _scheduleViewMode = await RecordsTable.getViewMode();
+        _renderScheduleViewToggle();
+    }
     switchTab('schedule');
     loadVaccine();
 }
@@ -1071,53 +1079,21 @@ function filterRecords(type, btn) {
     if (selectedDate) loadRecords(selectedDate);
 }
 
-function renderRecords(records, vaccineData, healthData, countdownList, dateStr) {
+async function renderRecords(records, vaccineData, healthData, countdownList, dateStr) {
     const container = document.getElementById('records-list');
     if (!container) return;
+    _lastScheduleRenderArgs = { records, vaccineData, healthData, countdownList, dateStr };
+
+    if (_scheduleViewMode === null && typeof RecordsTable !== 'undefined') {
+        _scheduleViewMode = await RecordsTable.getViewMode();
+        _renderScheduleViewToggle();
+    }
+    const useTable = _scheduleViewMode === 'table';
+
     const items = [];
 
-    if (records && records.length > 0) {
-        records.forEach(r => {
-            const badgeMap = { feed: 'badge-feed', excrete: 'badge-excrete', symptom: 'badge-symptom', supplement: 'badge-supplement' };
-            const typeClass = badgeMap[r.type] || 'badge-symptom';
-            const bgMap = { feed: 'bg-blue-500/10', excrete: 'bg-amber-500/10', symptom: 'bg-red-500/10', supplement: 'bg-purple-500/10' };
-            const iconMap = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
-            const colorMap = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
-
-            let detail = '';
-            if (r.amount) {
-                const unit = (r.sub_type === 'solid_food' && r.food_unit) ? r.food_unit : 'ml';
-                detail += `${r.amount}${unit}`;
-            }
-            if (r.duration) detail += ` · ${r.duration}分钟`;
-            if (r.temperature) detail += ` · ${r.temperature}°C`;
-            if (r.color) detail += ` · ${r.color}`;
-            if (r.consistency) detail += ` · ${r.consistency}`;
-            if (r.note) detail += ` · ${r.note}`;
-
-            items.push(`
-            <div class="card flex items-center gap-3 py-3 px-4 fade-in">
-                <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bgMap[r.type] || bgMap.symptom}">
-                    <i data-lucide="${iconMap[r.type] || iconMap.symptom}" class="w-4 h-4 ${colorMap[r.type] || colorMap.symptom}"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                        <span class="text-sm text-text-primary">${esc(typeLabel(r.type, r.sub_type))}</span>
-                        <span class="text-xs px-1.5 py-0.5 rounded border ${typeClass}">${TYPE_LABELS[r.type]}</span>
-                    </div>
-                    <p class="text-xs text-text-muted mt-0.5">${esc(detail || '--')}</p>
-                </div>
-                <div class="flex items-center gap-1 flex-shrink-0">
-                    <span class="font-mono text-xs text-text-muted">${formatTime(r.timestamp)}</span>
-                    <button class="text-text-muted hover:text-amber-400 transition-colors p-1" onclick="openEditModal(${r.id}, onScheduleEditSaved)" title="编辑">
-                        <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
-                    </button>
-                    <button class="text-text-muted hover:text-red-400 transition-colors p-1" onclick="deleteRecord(${r.id})" title="删除">
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                    </button>
-                </div>
-            </div>`);
-        });
+    if (records && records.length > 0 && !useTable) {
+        items.push(_renderScheduleRecordCards(records));
     }
 
     if (vaccineData) {
@@ -1234,16 +1210,89 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
         });
     }
 
-    if (items.length === 0) {
+    // 表格视图：日常记录单独成表，放在最前；日程类仍用卡片追加在后
+    const tableHtml = (useTable && records && records.length > 0)
+        ? RecordsTable.renderTable(records, {
+            onEdit: id => openEditModal(id, onScheduleEditSaved),
+            onDelete: id => deleteRecord(id),
+        })
+        : '';
+
+    if (items.length === 0 && !tableHtml) {
         container.innerHTML = `
             <div class="card text-center text-text-muted text-sm py-8">
-                <p>${dateStr} 暂无记录</p>
+                <p>${esc(dateStr)} 暂无记录</p>
             </div>`;
         return;
     }
 
-    container.innerHTML = items.join('');
+    container.innerHTML = (tableHtml ? tableHtml : '') +
+        (items.length ? `<div class="space-y-2">${items.join('')}</div>` : '');
+    if (tableHtml) {
+        RecordsTable.bindTableActions(container, {
+            onEdit: id => openEditModal(id, onScheduleEditSaved),
+            onDelete: id => deleteRecord(id),
+        });
+    }
     lucide.createIcons();
+}
+
+// 日常记录的卡片视图（表格视图下不渲染）
+function _renderScheduleRecordCards(records) {
+    return records.map(r => {
+        const badgeMap = { feed: 'badge-feed', excrete: 'badge-excrete', symptom: 'badge-symptom', supplement: 'badge-supplement' };
+        const typeClass = badgeMap[r.type] || 'badge-symptom';
+        const bgMap = { feed: 'bg-blue-500/10', excrete: 'bg-amber-500/10', symptom: 'bg-red-500/10', supplement: 'bg-purple-500/10' };
+        const iconMap = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
+        const colorMap = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
+
+        let detail = '';
+        if (r.amount) {
+            const unit = (r.sub_type === 'solid_food' && r.food_unit) ? r.food_unit : 'ml';
+            detail += `${r.amount}${unit}`;
+        }
+        if (r.duration) detail += ` · ${r.duration}分钟`;
+        if (r.temperature) detail += ` · ${r.temperature}°C`;
+        if (r.color) detail += ` · ${r.color}`;
+        if (r.consistency) detail += ` · ${r.consistency}`;
+        if (r.note) detail += ` · ${r.note}`;
+
+        return `
+        <div class="card flex items-center gap-3 py-3 px-4 fade-in">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bgMap[r.type] || bgMap.symptom}">
+                <i data-lucide="${iconMap[r.type] || iconMap.symptom}" class="w-4 h-4 ${colorMap[r.type] || colorMap.symptom}"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-text-primary">${esc(typeLabel(r.type, r.sub_type))}</span>
+                    <span class="text-xs px-1.5 py-0.5 rounded border ${typeClass}">${TYPE_LABELS[r.type]}</span>
+                </div>
+                <p class="text-xs text-text-muted mt-0.5">${esc(detail || '--')}</p>
+            </div>
+            <div class="flex items-center gap-1 flex-shrink-0">
+                <span class="font-mono text-xs text-text-muted">${formatTime(r.timestamp)}</span>
+                <button class="text-text-muted hover:text-amber-400 transition-colors p-1" onclick="openEditModal(${r.id}, onScheduleEditSaved)" title="编辑">
+                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                </button>
+                <button class="text-text-muted hover:text-red-400 transition-colors p-1" onclick="deleteRecord(${r.id})" title="删除">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function _renderScheduleViewToggle() {
+    const el = document.getElementById('schedule-view-toggle');
+    if (!el || typeof RecordsTable === 'undefined') return;
+    el.innerHTML = RecordsTable.renderViewToggle(_scheduleViewMode);
+    RecordsTable.bindViewToggle(el, mode => {
+        _scheduleViewMode = mode;
+        if (_lastScheduleRenderArgs) {
+            const a = _lastScheduleRenderArgs;
+            renderRecords(a.records, a.vaccineData, a.healthData, a.countdownList, a.dateStr);
+        }
+    });
 }
 
 function onScheduleEditSaved() {

@@ -11,6 +11,12 @@
             <p class="text-text-muted text-sm mt-0.5 font-mono" id="today-date"></p>
         </div>
         <div class="flex items-center gap-2">
+            {% if current_user and current_user.status == 'approved' %}
+            <button class="btn-primary flex items-center gap-2 text-sm" onclick="openBatchModal()">
+                <i data-lucide="camera" class="w-4 h-4"></i>
+                拍照识别 / 批量录入
+            </button>
+            {% endif %}
             {% if not current_user %}
             <a href="/login" class="btn-primary flex items-center gap-2 text-sm">
                 <i data-lucide="log-in" class="w-4 h-4"></i>
@@ -103,11 +109,14 @@
 
     <!-- 最近记录 -->
     <div>
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center justify-between mb-3 gap-2">
             <h2 class="text-sm font-medium text-text-secondary">最近记录</h2>
-            <a href="/vaccine" class="text-xs text-text-muted hover:text-accent transition-colors">全部日程</a>
+            <div class="flex items-center gap-2">
+                <span id="recent-view-toggle"></span>
+                <a href="/vaccine" class="text-xs text-text-muted hover:text-accent transition-colors whitespace-nowrap">全部日程</a>
+            </div>
         </div>
-        <div class="space-y-2" id="recent-records">
+        <div id="recent-records">
             <div class="card text-center text-text-muted text-sm py-8">
                 <p>暂无记录</p>
             </div>
@@ -118,4 +127,5 @@
 
 {% block scripts %}
 <script src="/static/js/dashboard.js" data-page-script></script>
+<script src="/static/js/batch.js" data-page-script></script>
 {% endblock %}

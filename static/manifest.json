@@ -1,10 +1,11 @@
 {
     "name": "Baby Tracker - 新生儿出入量记录",
     "short_name": "Baby Tracker",
-    "description": "记录新生儿喂养、排泄、症状，支持奶量估算与统计趋势",
+    "description": "记录新生儿喂养、排泄、症状，支持拍照识别、批量录入、奶量估算与统计趋势",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
-    "background_color": "#00e5a0",
+    "background_color": "#0a0f1a",
     "theme_color": "#00e5a0",
     "orientation": "portrait-primary",
     "icons": [
@@ -19,6 +20,28 @@
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any"
+        },
+        {
+            "src": "/static/icons/icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "拍照识别 / 批量录入",
+            "short_name": "拍照录入",
+            "description": "拍照识别记录或手动批量录入",
+            "url": "/?action=batch",
+            "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
+        },
+        {
+            "name": "趋势分析",
+            "short_name": "趋势",
+            "description": "查看奶量、体重与排泄趋势",
+            "url": "/trends",
+            "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192" }]
         }
     ]
 }

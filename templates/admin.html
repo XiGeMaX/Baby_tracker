@@ -3,7 +3,7 @@
 {% block title %}管理 - Baby Tracker{% endblock %}
 
 {% block content %}
-<div class="space-y-6 fade-in">
+<div class="space-y-6 fade-in pb-24 md:pb-0">
     <div class="flex items-center justify-between">
         <h1 class="text-xl font-semibold">管理</h1>
         <a href="/" class="text-text-muted hover:text-text-secondary transition-colors text-sm flex items-center gap-1">
@@ -90,6 +90,80 @@
             <input type="number" id="feeds-per-day" class="input-field font-mono" min="4" max="16" value="8">
         </div>
         <button class="btn-primary text-sm" onclick="saveSettings()">保存设置</button>
+    </div>
+
+    <!-- 记录列表展示方式 -->
+    <div class="card space-y-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="table-2" class="w-4 h-4 text-accent"></i>
+            <h2 class="text-sm font-medium text-text-secondary">记录列表展示方式</h2>
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">默认展示方式</label>
+            <select id="record-view-mode" class="input-field">
+                <option value="table">表格（按类型分列）</option>
+                <option value="card">卡片（原有列表）</option>
+            </select>
+            <p class="text-[10px] text-text-muted mt-1">影响总览「最近记录」与成长「日程记录列表」；表格只显示当天实际出现过的列。页面上的「表格/卡片」按钮为临时切换，不会修改此设置。</p>
+        </div>
+        <button class="btn-primary text-sm" onclick="saveRecordViewMode()">保存展示方式</button>
+    </div>
+
+    <!-- AI 识别配置 -->
+    <div class="card space-y-4" id="ai-config-card">
+        <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2">
+                <i data-lucide="wand-sparkles" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary">AI 识别配置</h2>
+            </div>
+            <span id="ai-status-text" class="text-xs text-text-muted">加载中...</span>
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">接口地址 (base_url)</label>
+            <input type="text" id="ai-base-url" class="input-field font-mono text-xs" placeholder="如 https://api.openai.com/v1 或 http://localhost:11434/v1">
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">模型 (model)</label>
+            <input type="text" id="ai-model" class="input-field font-mono text-xs" placeholder="如 gpt-4o-mini / qwen-vl-max / glm-4v-flash">
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">最大输出 token (max_tokens)</label>
+            <input type="number" id="ai-max-tokens" class="input-field font-mono text-xs" min="256" max="32768" step="256" placeholder="留空 = 不限制">
+            <p class="text-[10px] text-text-muted mt-1">默认留空即不限制，使用服务商/模型的默认上限。仅在需要强制上限或在管理页覆盖时才填写（256~32768）。</p>
+        </div>
+        <div>
+            <label class="text-text-muted text-xs mb-1 block">API Key</label>
+            <input type="password" id="ai-api-key" class="input-field font-mono text-xs" placeholder="留空表示不修改" autocomplete="new-password">
+        </div>
+        <div class="flex gap-2 flex-wrap">
+            <button class="btn-primary text-sm flex items-center gap-2" id="ai-save-btn" onclick="saveAiConfig()">
+                <i data-lucide="check" class="w-4 h-4"></i> 保存
+            </button>
+            <button class="btn-secondary text-sm flex items-center gap-2" id="ai-test-btn" onclick="testAiConfig()">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i> 测试连接
+            </button>
+        </div>
+        <p class="text-[10px] text-text-muted">兼容 OpenAI /chat/completions 的视觉模型；环境变量优先级高于页面配置。API Key 不会回显，留空即保留原密钥。</p>
+    </div>
+
+    <!-- AI 识别日志（排查识别失败 / 结果不准） -->
+    <div class="card space-y-3" id="ai-log-card">
+        <div class="flex items-center justify-between gap-2 mb-1 flex-wrap">
+            <div class="flex items-center gap-2">
+                <i data-lucide="scroll-text" class="w-4 h-4 text-accent"></i>
+                <h2 class="text-sm font-medium text-text-secondary">AI 识别日志</h2>
+            </div>
+            <div class="flex items-center gap-2">
+                <select id="ai-log-lines" class="input-field font-mono text-xs w-auto py-1">
+                    <option value="100">最近 100 行</option>
+                    <option value="200" selected>最近 200 行</option>
+                    <option value="500">最近 500 行</option>
+                </select>
+                <button class="btn-secondary text-xs px-2.5 py-1.5 whitespace-nowrap" onclick="loadAiLogs()">刷新</button>
+            </div>
+        </div>
+        <p class="text-[10px] text-text-muted">记录请求摘要、模型原始返回与逐条解析结果，用于排查识别失败或结果不准；不含图片本身与 API Key。</p>
+        <pre id="ai-log-output" class="bg-base border border-border rounded-lg p-3 font-mono text-[10px] leading-relaxed text-text-secondary overflow-auto max-h-72 whitespace-pre-wrap break-all">点击「刷新」加载日志</pre>
     </div>
 
     <!-- 数据管理 -->

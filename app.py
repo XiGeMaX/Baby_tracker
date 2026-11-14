@@ -7,14 +7,26 @@ from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, jsonify, g, send_file, session, redirect, url_for
 from io import StringIO, BytesIO
 from werkzeug.security import generate_password_hash, check_password_hash
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import csv
 import secrets
 import string
+import base64
+import re
+import logging
+from logging.handlers import RotatingFileHandler
+import ai_service
 
 app = Flask(__name__)
 app.config['DATABASE'] = os.path.join(os.path.dirname(__file__), 'data', 'baby.db')
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'baby-tracker-secret-key-change-in-prod')
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+# 显式声明 SameSite=Lax（Flask 默认值），兼容 PWA 独立窗口与局域网访问。
+# 刻意不设 SESSION_COOKIE_SECURE：家庭自托管常通过 HTTP 局域网访问，
+# 设为 True 会导致浏览器完全不发送会话 Cookie，登录直接失效。
+# 部署在 HTTPS 反向代理后时，可由部署方按需覆盖该配置。
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
 
 
 @app.after_request
@@ -191,6 +203,8 @@ def init_db():
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('custom_daily_target', '')")
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('feeds_per_day', '8')")
     db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('reminder_interval_min', '180')")
+    # 记录列表默认展示方式：table（表格）/ card（卡片）
+    db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('record_view_mode', 'table')")
     # 奶量估算系数（JSON格式，每个阶段: ml/kg/天）
     default_coeffs = json_module.dumps({
         'day0': 60,       # 出生当天固定值
@@ -358,17 +372,60 @@ def add_log_ha(action, target_type='', target_id=None, detail=''):
 
 # ── Auth Helpers ──────────────────────────────────────────
 
+# 长期 API token：用 SECRET_KEY 对 user_id 签名，无需新增表，也不进备份列清单。
+# 有效期与登录会话一致（30 天）；浏览器仍走原有 session cookie。
+TOKEN_MAX_AGE = int(timedelta(days=30).total_seconds())
+TOKEN_SALT = 'baby-tracker-api-token'
+
+
+def _token_serializer():
+    return URLSafeTimedSerializer(app.config['SECRET_KEY'], salt=TOKEN_SALT)
+
+
+def generate_api_token(user_id):
+    return _token_serializer().dumps({'uid': user_id})
+
+
+def _uid_from_bearer_token():
+    """解析 Authorization: Bearer <token>，失败返回 None（不抛异常）。"""
+    auth = request.headers.get('Authorization', '').strip()
+    if not auth.lower().startswith('bearer '):
+        return None
+    token = auth[7:].strip()
+    if not token:
+        return None
+    try:
+        payload = _token_serializer().loads(token, max_age=TOKEN_MAX_AGE)
+    except (BadSignature, SignatureExpired, ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    uid = payload.get('uid')
+    return uid if isinstance(uid, int) else None
+
+
 def current_user():
     if hasattr(g, '_current_user'):
         return g._current_user
+    # 优先会话 Cookie；无会话时才尝试 Bearer token（供 PWA / 未来原生客户端使用）
     uid = session.get('user_id')
+    from_bearer = False
+    if not uid:
+        uid = _uid_from_bearer_token()
+        from_bearer = uid is not None
     if not uid:
         g._current_user = None
         return None
     db = get_db()
     user = db.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
     if not user:
-        session.clear()
+        # 用户被删除：清空会话；token 本身无需撤销，查不到用户自然失效
+        if not from_bearer:
+            session.clear()
+        g._current_user = None
+        return None
+    # token 认证同样要求账号处于 approved 状态（被拒绝/停用后 token 立即失效）
+    if from_bearer and user['status'] != 'approved':
         g._current_user = None
         return None
     g._current_user = dict(user)
@@ -557,6 +614,24 @@ def login():
         'message': '登录成功',
         'user': {'id': user['id'], 'username': user['username'], 'nickname': user['nickname'], 'role': user['role']}
     })
+
+
+@app.route('/api/auth/token', methods=['POST'])
+def issue_api_token():
+    """为当前已登录会话签发长期 API token（供 PWA / 未来原生客户端使用）。
+
+    要求先用 session 登录（不新增密码入口，避免扩大攻击面）。
+    返回后调用方可在 Authorization: Bearer <token> 中携带，所有 /api/* 均认。
+    """
+    u = current_user()
+    if not u:
+        return jsonify({'error': '请先登录'}), 401
+    add_log('签发API Token', 'user', u['id'], f"用户 {u['username']} 签发长期 token")
+    return jsonify({
+        'token': generate_api_token(u['id']),
+        'expires_in': TOKEN_MAX_AGE,
+        'user': {'id': u['id'], 'username': u['username'], 'role': u['role']},
+    }), 201
 
 
 @app.route('/api/auth/logout', methods=['POST'])
@@ -1034,7 +1109,9 @@ def update_baby():
 def get_settings():
     db = get_db()
     rows = db.execute("SELECT key, value FROM settings").fetchall()
-    return jsonify({r['key']: r['value'] for r in rows})
+    # 安全：AI 密钥不通过公开接口回显
+    return jsonify({r['key']: r['value'] for r in rows
+                    if r['key'] != 'ai_vision_api_key'})
 
 
 @app.route('/api/settings', methods=['PUT'])
@@ -1043,14 +1120,380 @@ def update_settings():
         return jsonify({'error': '仅管理员可修改'}), 403
     data = request.get_json()
     db = get_db()
+    # 仅接受合法的展示方式，避免写入垃圾值导致前端回退异常
+    if 'record_view_mode' in data and data['record_view_mode'] not in ('table', 'card'):
+        return jsonify({'error': '展示方式只能是 table 或 card'}), 400
     for key, value in data.items():
         db.execute(
             "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=?, updated_at=datetime('now','localtime')",
             (key, str(value), str(value))
         )
     db.commit()
-    add_log('修改设置', 'settings', None, json_module.dumps(data, ensure_ascii=False))
+    # 审计日志脱敏：不把密钥写进日志
+    log_data = {k: ('***' if k == 'ai_vision_api_key' and v else v)
+                for k, v in data.items()}
+    add_log('修改设置', 'settings', None, json_module.dumps(log_data, ensure_ascii=False))
     return jsonify({'message': '设置已更新'})
+
+
+# ── API: AI Vision ─────────────────────────────────────────
+
+SETTING_UPSERT = ("INSERT INTO settings (key, value) VALUES (?, ?) "
+                  "ON CONFLICT(key) DO UPDATE SET value=?, updated_at=datetime('now','localtime')")
+
+
+def _settings_dict(db):
+    """把 settings 表读成 {key: value} 字典。"""
+    rows = db.execute("SELECT key, value FROM settings").fetchall()
+    return {r['key']: r['value'] for r in rows}
+
+
+def _effective_ai_config(db):
+    """读取 settings 表并计算实际生效的 AI 配置。"""
+    return ai_service.get_effective_config(_settings_dict(db))
+
+
+def _ai_config_public(cfg):
+    """构造可安全返回前端的配置（绝不回显完整密钥）。"""
+    key = cfg.get('api_key') or ''
+    return {
+        'base_url': cfg.get('base_url') or '',
+        'model': cfg.get('model') or '',
+        # 未配置时为 null：表示不主动限制输出长度
+        'max_tokens': cfg.get('max_tokens'),
+        # 未配置时为 null：表示不主动设超时
+        'timeout': cfg.get('timeout'),
+        'api_key_masked': ai_service.mask_key(key),
+        'has_key': bool(key),
+        'key_source': cfg.get('key_source') or 'none',
+        'configured': bool(cfg.get('configured')),
+    }
+
+
+@app.route('/api/ai/status', methods=['GET'])
+def ai_status():
+    if not is_approved():
+        return jsonify({'error': '请先登录'}), 401
+    db = get_db()
+    cfg = _effective_ai_config(db)
+    return jsonify({
+        'configured': bool(cfg['configured']),
+        'model': cfg['model'],
+        'key_source': cfg['key_source'],
+    })
+
+
+@app.route('/api/ai/config', methods=['GET'])
+def ai_get_config():
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+    db = get_db()
+    return jsonify(_ai_config_public(_effective_ai_config(db)))
+
+
+@app.route('/api/ai/config', methods=['PUT'])
+def ai_update_config():
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+
+    base_url = str(data.get('base_url') or '').strip()
+    model = str(data.get('model') or '').strip()
+    api_key = data.get('api_key')
+    if api_key is not None:
+        api_key = str(api_key).strip()
+
+    # 最大输出 token：可选。显式传空字符串表示「清除限制、使用服务商默认」；
+    # 传值则校验为整数，非法值直接拒绝，避免写入后识别全部失败。
+    clear_max_tokens = False
+    max_tokens = None
+    if 'max_tokens' in data:
+        raw_limit = data.get('max_tokens')
+        if raw_limit in (None, ''):
+            clear_max_tokens = True
+        else:
+            max_tokens = ai_service._coerce_max_tokens(raw_limit)
+            if max_tokens is None:
+                return jsonify({'error': '最大输出 token 必须是整数'}), 400
+
+    # base_url / model 总是写 settings；api_key 省略或空串表示保留 db 中现有密钥
+    db.execute(SETTING_UPSERT, ('ai_vision_base_url', base_url, base_url))
+    db.execute(SETTING_UPSERT, ('ai_vision_model', model, model))
+    if api_key:
+        db.execute(SETTING_UPSERT, ('ai_vision_api_key', api_key, api_key))
+    if clear_max_tokens:
+        db.execute(SETTING_UPSERT, ('ai_vision_max_tokens', '', ''))
+    elif max_tokens is not None:
+        db.execute(SETTING_UPSERT, ('ai_vision_max_tokens', str(max_tokens), str(max_tokens)))
+    db.commit()
+
+    # 审计日志 detail 不含密钥
+    if clear_max_tokens:
+        limit_desc = '已清除(使用服务商默认)'
+    elif max_tokens is not None:
+        limit_desc = max_tokens
+    else:
+        limit_desc = '未修改'
+    detail = 'base_url=%s, model=%s, max_tokens=%s, api_key=%s' % (
+        base_url, model, limit_desc, '已更新' if api_key else '未修改')
+    add_log('修改AI配置', 'settings', None, detail)
+    cfg = _effective_ai_config(db)
+    return jsonify({'message': 'AI 配置已保存', 'config': _ai_config_public(cfg)})
+
+
+@app.route('/api/ai/config/test', methods=['POST'])
+def ai_test_config():
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+    db = get_db()
+    cfg = _effective_ai_config(db)
+    if not cfg['configured']:
+        return jsonify({'error': '尚未配置 AI 服务（缺少 API Key 或 Base URL）'}), 400
+    ok, message = ai_service.test_connection(cfg)
+    if ok:
+        return jsonify({'ok': True, 'message': '连接成功'})
+    return jsonify({'error': message}), 400
+
+
+@app.route('/api/ai/recognize', methods=['POST'])
+def ai_recognize():
+    if not is_approved():
+        return jsonify({'error': '请先登录'}), 401
+    data = request.get_json(silent=True) or {}
+
+    # 校验 image 必须是 data URL，mime 限 image/jpeg|png|webp，base64 解码后 <= 10MB
+    image = data.get('image')
+    if not isinstance(image, str):
+        return jsonify({'error': '缺少图片数据'}), 400
+    m = re.match(r'^data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\s]+)$', image)
+    if not m:
+        return jsonify({'error': '图片格式无效，仅支持 jpeg/png/webp 的 data URL'}), 400
+    b64 = re.sub(r'\s+', '', m.group(2))
+    try:
+        raw_bytes = base64.b64decode(b64, validate=True)
+    except Exception:
+        return jsonify({'error': '图片 base64 解码失败'}), 400
+    if len(raw_bytes) > 10 * 1024 * 1024:
+        return jsonify({'error': '图片过大，最大 10MB'}), 400
+    if not raw_bytes:
+        return jsonify({'error': '图片数据为空'}), 400
+
+    # 校验 date
+    date_str = data.get('date')
+    if not isinstance(date_str, str):
+        return jsonify({'error': '日期格式无效，需 YYYY-MM-DD'}), 400
+    try:
+        datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': '日期格式无效，需 YYYY-MM-DD'}), 400
+
+    db = get_db()
+    cfg = _effective_ai_config(db)
+    if not cfg['configured']:
+        return jsonify({'error': '尚未配置 AI 服务', 'configured': False}), 400
+
+    u = current_user()
+    ai_log = logging.getLogger('baby_tracker.ai')
+    ai_log.info('收到识别请求：user=%s date=%s image_bytes=%d model=%s',
+                (u['username'] if u else '?'), date_str, len(raw_bytes), cfg['model'])
+
+    try:
+        records = ai_service.recognize_image(image, date_str, cfg)
+    except RuntimeError as e:
+        # ai_service 抛出的都是友好中文；仍做一次兜底防泄漏
+        msg = str(e) or '未知错误'
+        ai_log.error('识别失败（可预期）：%s', msg)
+        if '密钥' in msg or 'key' in msg.lower() or 'authorization' in msg.lower():
+            msg = '上游服务鉴权失败，请检查配置'
+        return jsonify({'error': 'AI 识别失败：%s' % msg[:200]}), 502
+    except Exception:
+        # 未知异常不外泄堆栈 / 密钥，但日志里保留堆栈供排查
+        ai_log.exception('识别失败（未预期异常）')
+        return jsonify({'error': 'AI 识别失败：服务暂时不可用，请稍后重试'}), 502
+
+    if not isinstance(records, list):
+        ai_log.error('识别结果类型异常：%s', type(records).__name__)
+        return jsonify({'error': 'AI 识别失败：返回数据格式异常'}), 502
+    ai_log.info('识别请求处理完成：返回 %d 条候选记录', len(records))
+    return jsonify({'records': records, 'meta': {'model': cfg['model'], 'count': len(records)}})
+
+
+@app.route('/api/ai/logs', methods=['GET'])
+def ai_logs():
+    """查看最近的 AI 识别日志（仅管理员）。
+
+    日志用于排查「识别不准 / 返回非 JSON / 上游报错」等问题，
+    只包含请求摘要与模型返回内容，不包含图片本身与 API Key。
+    """
+    if not is_admin():
+        return jsonify({'error': '无权限'}), 403
+    try:
+        lines = int(request.args.get('lines', 200))
+    except (TypeError, ValueError):
+        lines = 200
+    lines = max(10, min(lines, 2000))
+
+    path = _ai_log_path()
+    if not os.path.exists(path):
+        return jsonify({'exists': False, 'lines': [], 'path': 'data/ai_vision.log',
+                        'hint': '还没有日志，发起一次拍照识别后即可在此查看'})
+
+    from collections import deque
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            tail = list(deque(f, maxlen=lines))
+    except OSError as e:
+        return jsonify({'error': '读取日志失败：%s' % e}), 500
+
+    return jsonify({
+        'exists': True,
+        'path': 'data/ai_vision.log',
+        'lines': [line.rstrip('\n') for line in tail],
+        'size': os.path.getsize(path),
+    })
+
+
+# ── API: Batch Records ─────────────────────────────────────
+
+BATCH_ALLOWED_TYPES = ('feed', 'excrete', 'symptom', 'supplement')
+BATCH_STR_FIELDS = ('sub_type', 'color', 'consistency', 'note', 'food_unit')
+
+
+def _batch_validate(records):
+    """逐条校验并归一化，返回 (cleaned, error, index)。index 为 1 基。"""
+    if not isinstance(records, list):
+        return None, 'records 必须是数组', 0
+    if len(records) == 0:
+        return None, 'records 不能为空', 0
+    if len(records) > 100:
+        return None, '一次最多提交 100 条记录', 0
+
+    cleaned = []
+    for i, item in enumerate(records):
+        n = i + 1
+        if not isinstance(item, dict):
+            return None, '第%d条：记录必须是对象' % n, n
+
+        rtype = item.get('type')
+        if rtype not in BATCH_ALLOWED_TYPES:
+            return None, '第%d条：无效的记录类型' % n, n
+
+        sub_type = item.get('sub_type')
+        if sub_type is None or not str(sub_type).strip():
+            return None, '第%d条：sub_type 不能为空' % n, n
+
+        # timestamp：宽松接受 %Y-%m-%d %H:%M:%S 与 %Y-%m-%d %H:%M（后者补 :00）；缺失用当前本地时间
+        ts_raw = item.get('timestamp')
+        if ts_raw is None or str(ts_raw).strip() == '':
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            ts = str(ts_raw).strip()
+            timestamp = None
+            for fmt, normalized in (
+                ('%Y-%m-%d %H:%M:%S', ts),
+                ('%Y-%m-%d %H:%M', ts + ':00'),
+            ):
+                try:
+                    datetime.strptime(ts, fmt)
+                    timestamp = normalized
+                    break
+                except ValueError:
+                    continue
+            if timestamp is None:
+                return None, '第%d条：timestamp 格式无效' % n, n
+
+        # 数值字段：非空须为数值且 >= 0（amount 上限 5000，temperature 0~50）
+        numbers = {}
+        for field in ('amount', 'duration', 'temperature'):
+            raw_val = item.get(field)
+            if raw_val is None or (isinstance(raw_val, str) and raw_val.strip() == ''):
+                numbers[field] = None
+                continue
+            try:
+                val = float(raw_val)
+            except (ValueError, TypeError):
+                return None, '第%d条：%s 必须是数值' % (n, field), n
+            if val < 0:
+                return None, '第%d条：%s 不能为负数' % (n, field), n
+            if field == 'amount' and val > 5000:
+                return None, '第%d条：amount 不能超过 5000' % n, n
+            if field == 'temperature' and val > 50:
+                return None, '第%d条：temperature 不能超过 50' % n, n
+            numbers[field] = int(val) if field == 'duration' else val
+
+        # 其余字段转字符串并截断；忽略前端传来的 confidence/warnings/raw_text/valid/errors/_selected 等非 DB 字段
+        row = {
+            'type': rtype,
+            'sub_type': str(sub_type).strip()[:200],
+            'amount': numbers['amount'],
+            'duration': numbers['duration'],
+            'color': str(item.get('color') or '')[:200],
+            'consistency': str(item.get('consistency') or '')[:200],
+            'temperature': numbers['temperature'],
+            'note': str(item.get('note') or '')[:200],
+            'timestamp': timestamp,
+            'food_unit': str(item.get('food_unit') or '')[:200],
+        }
+        cleaned.append(row)
+    return cleaned, None, 0
+
+
+@app.route('/api/records/batch', methods=['POST'])
+def create_records_batch():
+    if not is_approved():
+        return jsonify({'error': '请先登录'}), 401
+    data = request.get_json(silent=True) or {}
+    records = data.get('records')
+    cleaned, error, index = _batch_validate(records)
+    if error:
+        resp = {'error': error}
+        if index:
+            resp['index'] = index
+        return jsonify(resp), 400
+
+    u = current_user()
+    db = get_db()
+    params = [
+        (1, u['id'], r['type'], r['sub_type'], r['amount'], r['duration'],
+         r['color'], r['consistency'], r['temperature'], r['note'],
+         r['timestamp'], r['food_unit'])
+        for r in cleaned
+    ]
+
+    # 单事务：Python sqlite3 在首个 INSERT 自动开启事务，循环 INSERT 后只 commit 一次；异常 rollback
+    try:
+        record_ids = []
+        for p in params:
+            cursor = db.execute(
+                """INSERT INTO records (baby_id, user_id, type, sub_type, amount, duration,
+                   color, consistency, temperature, note, timestamp, food_unit)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", p)
+            record_ids.append(cursor.lastrowid)
+        db.commit()
+    except Exception:
+        db.rollback()
+        return jsonify({'error': '批量录入失败，已回滚'}), 500
+
+    # 审计日志摘要：总条数、各 type 数量、奶量合计
+    type_counts = {}
+    for r in cleaned:
+        type_counts[r['type']] = type_counts.get(r['type'], 0) + 1
+    total_amount = sum(r['amount'] or 0 for r in cleaned
+                       if r['type'] == 'feed' and r['sub_type'] != 'solid_food')
+    detail = '共%d条；%s；奶量合计%.0fml' % (
+        len(cleaned),
+        ', '.join('%s:%d' % (k, v) for k, v in sorted(type_counts.items())),
+        total_amount,
+    )
+    add_log('批量录入', 'record', None, detail)
+
+    target_date = data.get('_date')
+    summary = _today_summary_data(db, target_date)
+    summary['message'] = '批量录入成功'
+    summary['inserted'] = len(record_ids)
+    summary['record_ids'] = record_ids
+    return jsonify(summary), 201
 
 
 @app.route('/api/milk-estimate', methods=['GET'])
@@ -1229,9 +1672,13 @@ def backup_export():
     for table, cols in table_cols.items():
         try:
             rows = db.execute(f"SELECT {','.join(cols)} FROM {table}").fetchall()
+            out_rows = [dict(zip(cols, row)) for row in rows]
+            # 安全：AI 密钥不写入备份（保持备份 JSON 整体结构 / version 不变）
+            if table == 'settings':
+                out_rows = [r for r in out_rows if r.get('key') != 'ai_vision_api_key']
             backup['tables'][table] = {
                 'columns': cols,
-                'rows': [dict(zip(cols, row)) for row in rows]
+                'rows': out_rows
             }
         except Exception:
             backup['tables'][table] = {'columns': cols, 'rows': []}
@@ -2747,6 +3194,52 @@ def pwa_icon(size):
 _db_initialized = False
 _db_init_lock = threading.Lock()
 
+# AI 识别日志：控制台（docker logs 可见）+ data/ai_vision.log（滚动，便于事后排查）
+_ai_log_configured = False
+
+
+def setup_ai_logging():
+    """配置 baby_tracker.ai 日志器。
+
+    - AI_VISION_LOG_LEVEL：日志级别，默认 INFO
+    - AI_VISION_LOG_RAW：是否记录模型原始返回内容（默认 1；设 0 只记摘要）
+    - AI_VISION_LOG_MAX_CHARS：单条原始内容的最大字符数，默认 4000
+    日志文件固定写在数据库同目录（data/ai_vision.log），随 data 卷持久化。
+    """
+    global _ai_log_configured
+    if _ai_log_configured:
+        return
+    logger = logging.getLogger('baby_tracker.ai')
+    level_name = str(os.environ.get('AI_VISION_LOG_LEVEL', 'INFO')).upper()
+    logger.setLevel(getattr(logging, level_name, logging.INFO))
+    logger.propagate = False
+    fmt = logging.Formatter('[%(asctime)s] %(levelname)s %(message)s')
+
+    if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+               for h in logger.handlers):
+        sh = logging.StreamHandler()
+        sh.setFormatter(fmt)
+        logger.addHandler(sh)
+
+    # 测试环境只输出到控制台，避免在临时目录/真实目录留下日志文件
+    if not app.config.get('TESTING'):
+        try:
+            log_dir = os.path.dirname(app.config['DATABASE'])
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, 'ai_vision.log')
+            if not any(isinstance(h, RotatingFileHandler) for h in logger.handlers):
+                fh = RotatingFileHandler(log_path, maxBytes=5 * 1024 * 1024,
+                                         backupCount=3, encoding='utf-8')
+                fh.setFormatter(fmt)
+                logger.addHandler(fh)
+        except OSError:
+            logger.warning('无法创建 AI 日志文件，仅输出到控制台')
+    _ai_log_configured = True
+
+
+def _ai_log_path():
+    return os.path.join(os.path.dirname(app.config['DATABASE']), 'ai_vision.log')
+
 
 @app.before_request
 def ensure_db():
@@ -2756,6 +3249,8 @@ def ensure_db():
             if not _db_initialized:
                 init_db()
                 _db_initialized = True
+    if not _ai_log_configured:
+        setup_ai_logging()
 
 
 @app.cli.command('reset-password')

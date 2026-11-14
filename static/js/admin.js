@@ -34,7 +34,7 @@ const SUB_TYPES = {
 let _adminEventsInit = false;
 
 function initAdmin() {
-    Promise.all([loadBaby(), loadSettings(), loadStats(), loadUsers(), loadButtons(), loadLogs(), loadHaApiKey()]);
+    Promise.all([loadBaby(), loadSettings(), loadStats(), loadUsers(), loadButtons(), loadLogs(), loadHaApiKey(), loadAiConfig()]);
     updateSubTypes();
     if (!_adminEventsInit) {
         _adminEventsInit = true;
@@ -88,33 +88,37 @@ function renderUsers(users) {
         const sl = statusLabels[u.status] || u.status;
 
         let actions = '';
+        const actCls = 'flex-1 text-xs py-1.5 rounded border transition-colors whitespace-nowrap';
         if (u.status === 'pending') {
             actions = `
-                <button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors" onclick="approveUser(${u.id})">批准</button>
-                <button class="text-xs px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors" onclick="rejectUser(${u.id})">拒绝</button>`;
+                <button class="${actCls} border-accent/30 text-accent hover:bg-accent/10" onclick="approveUser(${u.id})">批准</button>
+                <button class="${actCls} border-red-500/30 text-red-400 hover:bg-red-500/10" onclick="rejectUser(${u.id})">拒绝</button>`;
         } else if (u.status === 'rejected') {
-            actions = `<button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors" onclick="approveUser(${u.id})">重新批准</button>`;
+            actions = `<button class="${actCls} border-accent/30 text-accent hover:bg-accent/10" onclick="approveUser(${u.id})">重新批准</button>`;
         }
-        actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors" data-reset-pw="${u.id}" data-reset-name="${esc(u.nickname || u.username)}">改密</button>`;
-        actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-blue-400 hover:border-blue-500/30 transition-colors" data-rename-user="${u.id}" data-rename-name="${esc(u.username)}">改名</button>`;
+        actions += `<button class="${actCls} border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30" data-reset-pw="${u.id}" data-reset-name="${esc(u.nickname || u.username)}">改密</button>`;
+        actions += `<button class="${actCls} border-border text-text-muted hover:text-blue-400 hover:border-blue-500/30" data-rename-user="${u.id}" data-rename-name="${esc(u.username)}">改名</button>`;
         if (u.role !== 'admin') {
-            actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-red-400 hover:border-red-500/30 transition-colors" onclick="deleteUser(${u.id})">删除</button>`;
+            actions += `<button class="${actCls} border-border text-text-muted hover:text-red-400 hover:border-red-500/30" onclick="deleteUser(${u.id})">删除</button>`;
         }
 
+        // 移动端：信息与操作分两行，避免徽章被挤成竖排
         return `
-        <div class="flex items-center gap-3 py-2 px-3 rounded-lg bg-base border border-border">
-            <div class="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-accent text-xs font-bold flex-shrink-0">
-                ${esc((u.nickname || u.username || '?')[0])}
-            </div>
-            <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm text-text-primary">${esc(u.nickname || u.username)}</span>
-                    ${u.role === 'admin' ? '<span class="text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/30">管理员</span>' : ''}
-                    <span class="text-xs px-1.5 py-0.5 rounded border ${sc}">${sl}</span>
+        <div class="py-2.5 px-3 rounded-lg bg-base border border-border">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-accent text-xs font-bold flex-shrink-0">
+                    ${esc((u.nickname || u.username || '?')[0])}
                 </div>
-                <p class="text-xs text-text-muted">${esc(u.username)} · ${esc(u.created_at || '')}</p>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="text-sm text-text-primary truncate">${esc(u.nickname || u.username)}</span>
+                        ${u.role === 'admin' ? '<span class="text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/30 whitespace-nowrap flex-shrink-0">管理员</span>' : ''}
+                        <span class="text-xs px-1.5 py-0.5 rounded border ${sc} whitespace-nowrap flex-shrink-0">${sl}</span>
+                    </div>
+                    <p class="text-xs text-text-muted truncate">${esc(u.username)} · ${esc(u.created_at || '')}</p>
+                </div>
             </div>
-            <div class="flex items-center gap-1 flex-shrink-0">${actions}</div>
+            <div class="flex items-center gap-1.5 mt-2 pt-2 border-t border-border">${actions}</div>
         </div>`;
     }).join('');
 }
@@ -160,34 +164,43 @@ function renderButtons(buttons) {
     const typeLabels = { feed: '喂养', excrete: '排泄', symptom: '症状', supplement: '补充' };
     const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
 
-    container.innerHTML = buttons.map((b, i) => `
-        <div class="flex items-center gap-3 py-2 px-3 rounded-lg bg-base border border-border ${b.is_active ? '' : 'opacity-40'}">
-            <div class="flex flex-col gap-0.5">
-                <button class="text-text-muted hover:text-accent transition-colors ${i === 0 ? 'invisible' : ''}" onclick="moveButton(${b.id}, -1)" title="上移">
-                    <i data-lucide="chevron-up" class="w-3.5 h-3.5"></i>
-                </button>
-                <button class="text-text-muted hover:text-accent transition-colors ${i === buttons.length - 1 ? 'invisible' : ''}" onclick="moveButton(${b.id}, 1)" title="下移">
-                    <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
-                </button>
-            </div>
-            <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm text-text-primary">${esc(b.label)}</span>
-                    <span class="text-xs ${typeColors[b.type]}">${typeLabels[b.type]}</span>
-                    ${b.amount ? `<span class="text-xs text-text-muted font-mono">${b.amount}${b.sub_type === 'solid_food' && b.food_unit ? esc(b.food_unit) : 'ml'}</span>` : ''}
+    // 布局说明：移动端一行放不下「上下移动＋编辑＋禁用＋删除」5 个操作，
+    // 故拆为两行——第一行信息＋大号上下移按钮（40×40 触摸目标），第二行等宽操作按钮。
+    container.innerHTML = buttons.map((b, i) => {
+        const unit = (b.sub_type === 'solid_food' && b.food_unit) ? esc(b.food_unit) : 'ml';
+        return `
+        <div class="py-2.5 px-3 rounded-lg bg-base border border-border ${b.is_active ? '' : 'opacity-40'}">
+            <div class="flex items-center gap-2">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="text-sm text-text-primary truncate">${esc(b.label)}</span>
+                        <span class="text-xs ${typeColors[b.type]} flex-shrink-0 whitespace-nowrap">${typeLabels[b.type]}</span>
+                        ${b.amount ? `<span class="text-xs text-text-muted font-mono flex-shrink-0 whitespace-nowrap">${b.amount}${unit}</span>` : ''}
+                    </div>
+                    <p class="text-xs text-text-muted mt-0.5">排序: ${b.sort_order} · ${b.is_active ? '启用' : '禁用'}</p>
                 </div>
-                <p class="text-xs text-text-muted">排序: ${b.sort_order} · ${b.is_active ? '启用' : '禁用'}</p>
+                <div class="flex items-center gap-1 flex-shrink-0">
+                    <button class="btn-tap text-text-muted hover:text-accent transition-colors ${i === 0 ? 'invisible' : ''}"
+                            onclick="moveButton(${b.id}, -1)" title="上移" aria-label="上移">
+                        <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                    </button>
+                    <button class="btn-tap text-text-muted hover:text-accent transition-colors ${i === buttons.length - 1 ? 'invisible' : ''}"
+                            onclick="moveButton(${b.id}, 1)" title="下移" aria-label="下移">
+                        <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                    </button>
+                </div>
             </div>
-            <div class="flex items-center gap-1 flex-shrink-0">
-                <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors"
+            <div class="flex items-center gap-1.5 mt-2 pt-2 border-t border-border">
+                <button class="flex-1 text-xs py-1.5 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors whitespace-nowrap"
                         onclick="showEditButtonModal(${b.id})">编辑</button>
-                <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-accent transition-colors"
+                <button class="flex-1 text-xs py-1.5 rounded border border-border text-text-muted hover:text-accent transition-colors whitespace-nowrap"
                         onclick="toggleButton(${b.id}, ${b.is_active ? 0 : 1})">${b.is_active ? '禁用' : '启用'}</button>
-                <button class="text-xs px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+                <button class="flex-1 text-xs py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors whitespace-nowrap"
                         onclick="deleteButton(${b.id})">删除</button>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
     lucide.createIcons();
 }
 
@@ -463,7 +476,23 @@ async function loadSettings() {
             document.getElementById('custom-target').value = settings.custom_daily_target;
         }
         document.getElementById('feeds-per-day').value = settings.feeds_per_day || 8;
+        const modeEl = document.getElementById('record-view-mode');
+        if (modeEl) modeEl.value = (settings.record_view_mode === 'card') ? 'card' : 'table';
     } catch (e) { /* ignore */ }
+}
+
+async function saveRecordViewMode() {
+    const el = document.getElementById('record-view-mode');
+    if (!el) return;
+    try {
+        await api('/api/settings', {
+            method: 'PUT',
+            body: JSON.stringify({ record_view_mode: el.value })
+        });
+        showToast('展示方式已保存');
+    } catch (e) {
+        showToast('保存失败: ' + e.message);
+    }
 }
 
 async function saveSettings() {
@@ -476,6 +505,124 @@ async function saveSettings() {
         showToast('设置已保存');
     } catch (e) {
         showToast('保存失败: ' + e.message);
+    }
+}
+
+// ── AI 识别配置 ─────────────────────────────────────────
+// 管理员页面专属；接口报 401/403 时优雅降级（提示 + 隐藏卡片）。
+function _aiConfigDenied(e) {
+    const msg = (e && e.message) || '';
+    if (/401|403|未授权|无权限|登录|权限/i.test(msg)) {
+        showToast('无权限访问 AI 配置，请重新登录');
+        const card = document.getElementById('ai-config-card');
+        if (card) card.style.display = 'none';
+        return true;
+    }
+    return false;
+}
+
+async function loadAiConfig() {
+    try {
+        const cfg = await api('/api/ai/config');
+        const baseEl = document.getElementById('ai-base-url');
+        const modelEl = document.getElementById('ai-model');
+        const maxEl = document.getElementById('ai-max-tokens');
+        const keyEl = document.getElementById('ai-api-key');
+        const statusEl = document.getElementById('ai-status-text');
+        if (baseEl) baseEl.value = cfg.base_url || '';
+        if (modelEl) modelEl.value = cfg.model || '';
+        if (maxEl) maxEl.value = cfg.max_tokens || '';
+        if (keyEl) {
+            keyEl.value = '';
+            // placeholder 动态显示已配置的掩码，或提示留空
+            keyEl.placeholder = (cfg.has_key && cfg.api_key_masked)
+                ? `已配置：${cfg.api_key_masked}（留空表示不修改）`
+                : '留空表示不修改';
+        }
+        if (statusEl) {
+            const state = cfg.configured ? '已配置' : '未配置';
+            const src = cfg.key_source ? ` · ${cfg.key_source}` : '';
+            statusEl.textContent = `${state}${src}`;
+            statusEl.className = `text-xs ${cfg.configured ? 'text-accent' : 'text-amber-400'}`;
+        }
+    } catch (e) {
+        if (!_aiConfigDenied(e)) {
+            const statusEl = document.getElementById('ai-status-text');
+            if (statusEl) statusEl.textContent = '加载失败';
+            showToast('AI 配置加载失败：' + (e.message || '请重试'));
+        }
+    }
+}
+
+async function saveAiConfig() {
+    const data = {
+        base_url: (document.getElementById('ai-base-url')?.value || '').trim(),
+        model: (document.getElementById('ai-model')?.value || '').trim(),
+    };
+    const maxRaw = (document.getElementById('ai-max-tokens')?.value || '').trim();
+    if (maxRaw) {
+        const n = parseInt(maxRaw, 10);
+        if (!Number.isFinite(n) || n < 256 || n > 32768) {
+            showToast('最大输出 token 需在 256 ~ 32768 之间，或留空表示不限制');
+            return;
+        }
+        data.max_tokens = n;
+    } else {
+        // 显式传空字符串：清除限制，交回服务商/模型默认
+        data.max_tokens = '';
+    }
+    const key = document.getElementById('ai-api-key')?.value || '';
+    if (key) data.api_key = key;   // 留空表示不修改现有密钥
+    try {
+        const res = await api('/api/ai/config', { method: 'PUT', body: JSON.stringify(data) });
+        showToast((res && res.message) || 'AI 配置已保存');
+        const keyEl = document.getElementById('ai-api-key');
+        if (keyEl) keyEl.value = '';
+        loadAiConfig();
+    } catch (e) {
+        if (!_aiConfigDenied(e)) showToast('保存失败：' + (e.message || '请重试'));
+    }
+}
+
+async function testAiConfig() {
+    const btn = document.getElementById('ai-test-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> 测试中…';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+    try {
+        const res = await api('/api/ai/config/test', { method: 'POST', timeoutMs: 30000 });
+        showToast((res && res.ok && res.message) || '连接成功');
+    } catch (e) {
+        if (!_aiConfigDenied(e)) showToast('测试失败：' + (e.message || '请检查配置'));
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i> 测试连接';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+    }
+}
+
+// ── AI 识别日志（排查问题） ──────────────────────────────
+async function loadAiLogs() {
+    const out = document.getElementById('ai-log-output');
+    if (!out) return;
+    const linesEl = document.getElementById('ai-log-lines');
+    const lines = (linesEl && linesEl.value) || 200;
+    out.textContent = '加载中…';
+    try {
+        const data = await api(`/api/ai/logs?lines=${lines}`);
+        if (!data || data.exists === false) {
+            out.textContent = (data && data.hint) || '还没有日志，发起一次拍照识别后即可在此查看';
+            return;
+        }
+        const text = (data.lines && data.lines.length) ? data.lines.join('\n') : '日志为空';
+        out.textContent = text;
+        out.scrollTop = out.scrollHeight;   // 滚到最新一条
+    } catch (e) {
+        out.textContent = '加载失败：' + (e.message || '请重试');
     }
 }
 
