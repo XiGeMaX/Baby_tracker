@@ -16,14 +16,77 @@ const (
 	mcpEndpoint               = "/mcp"
 	mcpAPIKeySetting          = "mcp_api_key"
 	mcpEnabledSetting         = "mcp_enabled"
+	mcpPermissionSetting      = "mcp_permission_level"
 	mcpMaxRequestBodyBytes    = 1 << 20
 	mcpRateLimitPerMinute     = 60
 	mcpRateLimitWindow        = time.Minute
 	mcpDefaultListLimit       = 50
 	mcpMaxListLimit           = 200
+	mcpRecentDataDays         = 30
 	mcpToolVersion            = "1.9.0"
-	mcpListRecordsDescription = "列出指定日期的记录，按时间倒序分页返回"
+	mcpListRecordsDescription = "列出指定日期或日期范围内的记录，按时间倒序分页返回"
 )
+
+type mcpPermission string
+
+const (
+	mcpPermissionUnknown  mcpPermission = ""
+	mcpPermissionBasic    mcpPermission = "basic"
+	mcpPermissionAdvanced mcpPermission = "advanced"
+	mcpPermissionFull     mcpPermission = "full"
+)
+
+func parseMCPPermission(value string) (mcpPermission, bool) {
+	switch permission := mcpPermission(strings.ToLower(strings.TrimSpace(value))); permission {
+	case mcpPermissionBasic, mcpPermissionAdvanced, mcpPermissionFull:
+		return permission, true
+	default:
+		return mcpPermissionUnknown, false
+	}
+}
+
+func (p mcpPermission) rank() int {
+	switch p {
+	case mcpPermissionBasic:
+		return 1
+	case mcpPermissionAdvanced:
+		return 2
+	case mcpPermissionFull:
+		return 3
+	default:
+		return 0
+	}
+}
+
+func (p mcpPermission) allows(required mcpPermission) bool {
+	return p.rank() > 0 && p.rank() >= required.rank()
+}
+
+func (p mcpPermission) label() string {
+	switch p {
+	case mcpPermissionBasic:
+		return "基础"
+	case mcpPermissionAdvanced:
+		return "进阶"
+	case mcpPermissionFull:
+		return "完全"
+	default:
+		return "未设置"
+	}
+}
+
+func (p mcpPermission) description() string {
+	switch p {
+	case mcpPermissionBasic:
+		return "只读最近 30 天的记录、成长数据和宝宝资料"
+	case mcpPermissionAdvanced:
+		return "可读取最近 30 天数据，并新增日常、成长、疫苗和健康随访记录"
+	case mcpPermissionFull:
+		return "可访问全部历史数据，并修改宝宝资料、业务配置和管理数据"
+	default:
+		return "权限配置无效，已按基础权限运行"
+	}
+}
 
 type mcpRateLimiter struct {
 	mu      sync.Mutex
@@ -63,8 +126,13 @@ func (l *mcpRateLimiter) allow(key string, now time.Time) bool {
 }
 
 func (a *App) newMCPHandler() http.Handler {
-	streamable := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server {
-		return a.newMCPServer()
+	streamable := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		permission, err := a.mcpPermissionLevel(r.Context())
+		if err != nil {
+			a.logger.Error("load MCP permission", "error", err)
+			permission = mcpPermissionBasic
+		}
+		return a.newMCPServer(permission)
 	}, &mcp.StreamableHTTPOptions{
 		Stateless:                  true,
 		JSONResponse:               true,
@@ -114,6 +182,103 @@ func (a *App) mcpEnabled(ctx context.Context) bool {
 	return boolValue(stringValue(row["value"]))
 }
 
+func (a *App) mcpPermissionLevel(ctx context.Context) (mcpPermission, error) {
+	row, err := a.queryOne(ctx, "SELECT value FROM settings WHERE key = ?", mcpPermissionSetting)
+	if isNoRows(err) || row == nil {
+		return mcpPermissionBasic, nil
+	}
+	if err != nil {
+		return mcpPermissionBasic, fmt.Errorf("load MCP permission: %w", err)
+	}
+	permission, ok := parseMCPPermission(stringValue(row["value"]))
+	if !ok {
+		return mcpPermissionBasic, nil
+	}
+	return permission, nil
+}
+
+func (a *App) setMCPPermissionLevel(ctx context.Context, permission mcpPermission) error {
+	if !permission.allows(mcpPermissionBasic) {
+		return fmt.Errorf("invalid MCP permission %q", permission)
+	}
+	_, err := a.db.ExecContext(ctx,
+		`INSERT INTO settings (key, value) VALUES (?, ?)
+		 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now','localtime')`,
+		mcpPermissionSetting, string(permission))
+	return err
+}
+
+func (a *App) requireMCPPermission(ctx context.Context, required mcpPermission) (mcpPermission, error) {
+	permission, err := a.mcpPermissionLevel(ctx)
+	if err != nil {
+		return mcpPermissionBasic, err
+	}
+	if !permission.allows(required) {
+		return permission, fmt.Errorf(
+			"当前 MCP 权限为%s，此操作需要%s权限",
+			permission.label(),
+			required.label(),
+		)
+	}
+	return permission, nil
+}
+
+func mcpRecentStartDate() string {
+	return today().AddDate(0, 0, -(mcpRecentDataDays - 1)).Format("2006-01-02")
+}
+
+func (a *App) validateMCPDateAccess(ctx context.Context, date string) (mcpPermission, error) {
+	permission, err := a.requireMCPPermission(ctx, mcpPermissionBasic)
+	if err != nil {
+		return permission, err
+	}
+	date, err = normalizeMCPDate(date)
+	if err != nil {
+		return permission, err
+	}
+	if permission == mcpPermissionFull {
+		return permission, nil
+	}
+	startDate := mcpRecentStartDate()
+	endDate := today().Format("2006-01-02")
+	if date < startDate || date > endDate {
+		return permission, fmt.Errorf(
+			"当前 MCP 权限为%s，只能访问 %s 至 %s 的数据",
+			permission.label(),
+			startDate,
+			endDate,
+		)
+	}
+	return permission, nil
+}
+
+func (a *App) validateMCPTimestampAccess(ctx context.Context, timestamp string) (mcpPermission, error) {
+	permission, err := a.requireMCPPermission(ctx, mcpPermissionAdvanced)
+	if err != nil {
+		return permission, err
+	}
+	if permission == mcpPermissionFull {
+		return permission, nil
+	}
+	date := strings.TrimSpace(timestamp)
+	if len(date) >= len("2006-01-02") {
+		date = date[:len("2006-01-02")]
+	}
+	if _, err := parseDate(date); err != nil {
+		return permission, fmt.Errorf("timestamp 格式无效，需要 YYYY-MM-DD HH:MM:SS 或 RFC3339")
+	}
+	startDate := mcpRecentStartDate()
+	endDate := today().Format("2006-01-02")
+	if date < startDate || date > endDate {
+		return permission, fmt.Errorf(
+			"进阶权限只能新增 %s 至 %s 的记录；完全权限可补录任意日期",
+			startDate,
+			endDate,
+		)
+	}
+	return permission, nil
+}
+
 func (a *App) setMCPEnabled(ctx context.Context, enabled bool) error {
 	value := "0"
 	if enabled {
@@ -128,10 +293,20 @@ func (a *App) setMCPEnabled(ctx context.Context, enabled bool) error {
 
 func (a *App) mcpConfigData(ctx context.Context) map[string]any {
 	enabled := a.mcpEnabled(ctx)
+	permission, err := a.mcpPermissionLevel(ctx)
+	if err != nil {
+		a.logger.Error("load MCP permission", "error", err)
+		permission = mcpPermissionBasic
+	}
 	return map[string]any{
-		"enabled":   enabled,
-		"available": enabled,
-		"endpoint":  mcpEndpoint,
+		"enabled":             enabled,
+		"available":           enabled,
+		"endpoint":            mcpEndpoint,
+		"permission_level":    string(permission),
+		"permission_label":    permission.label(),
+		"permission_summary":  permission.description(),
+		"recent_data_days":    mcpRecentDataDays,
+		"full_access_warning": "完全权限允许 MCP 读取全部历史数据并修改业务配置，启用前请先备份数据。",
 	}
 }
 
@@ -150,24 +325,69 @@ func (a *App) updateMCPConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Enabled *bool `json:"enabled"`
+		Enabled               *bool  `json:"enabled"`
+		PermissionLevel       string `json:"permission_level"`
+		AcknowledgeFullAccess bool   `json:"acknowledge_full_access"`
 	}
-	if err := decodeJSON(w, r, &input); err != nil || input.Enabled == nil {
+	if err := decodeJSON(w, r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
-	enabled := *input.Enabled
-	if err := a.setMCPEnabled(r.Context(), enabled); err != nil {
-		writeError(w, http.StatusInternalServerError, "保存 MCP 开关失败")
+	requestedPermission := strings.TrimSpace(input.PermissionLevel)
+	if input.Enabled == nil && requestedPermission == "" {
+		writeError(w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
-	action := "关闭MCP服务"
-	message := "MCP 服务已关闭"
-	if enabled {
-		action = "开启MCP服务"
-		message = "MCP 服务已开启"
+
+	var (
+		actions []string
+		message string
+	)
+	if requestedPermission != "" {
+		permission, ok := parseMCPPermission(requestedPermission)
+		if !ok {
+			writeError(w, http.StatusBadRequest, "MCP 权限档位无效")
+			return
+		}
+		currentPermission, err := a.mcpPermissionLevel(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "加载 MCP 权限失败")
+			return
+		}
+		if permission == mcpPermissionFull && currentPermission != mcpPermissionFull &&
+			!input.AcknowledgeFullAccess {
+			writeError(w, http.StatusBadRequest, "启用完全权限前需要确认风险并备份数据")
+			return
+		}
+		if permission != currentPermission {
+			if err := a.setMCPPermissionLevel(r.Context(), permission); err != nil {
+				writeError(w, http.StatusInternalServerError, "保存 MCP 权限失败")
+				return
+			}
+			actions = append(actions, "修改MCP权限")
+			message = fmt.Sprintf("MCP 权限已设为%s", permission.label())
+		}
 	}
-	a.addLog(r.Context(), user, action, "settings", 0, "")
+	if input.Enabled != nil {
+		enabled := *input.Enabled
+		if err := a.setMCPEnabled(r.Context(), enabled); err != nil {
+			writeError(w, http.StatusInternalServerError, "保存 MCP 开关失败")
+			return
+		}
+		if enabled {
+			actions = append(actions, "开启MCP服务")
+			message = "MCP 服务已开启"
+		} else {
+			actions = append(actions, "关闭MCP服务")
+			message = "MCP 服务已关闭"
+		}
+	}
+	if len(actions) == 0 {
+		message = "MCP 配置未变更"
+	}
+	for _, action := range actions {
+		a.addLog(r.Context(), user, action, "settings", 0, "")
+	}
 	payload := a.mcpConfigData(r.Context())
 	payload["message"] = message
 	writeJSON(w, http.StatusOK, payload)
@@ -234,31 +454,40 @@ func (a *App) generateMCPAPIKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"api_key": apiKey})
 }
 
-func (a *App) newMCPServer() *mcp.Server {
+func (a *App) newMCPServer(permission mcpPermission) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:        "baby-tracker",
 		Title:       "Baby Tracker",
 		Description: "读取和记录 Baby Tracker 本地育儿数据",
 		Version:     mcpToolVersion,
 	}, &mcp.ServerOptions{
-		Instructions: "此服务默认关闭，需由管理员显式启用并配置独立的 MCP API 密钥。",
-		Logger:       a.logger,
+		Instructions: fmt.Sprintf(
+			"此服务默认关闭，需由管理员显式启用并配置独立的 MCP API 密钥。当前权限档位：%s。%s",
+			permission.label(),
+			permission.description(),
+		),
+		Logger: a.logger,
 	})
-	a.registerMCPTools(server)
+	a.registerMCPTools(server, permission)
 	return server
 }
 
-func (a *App) registerMCPTools(server *mcp.Server) {
+func (a *App) registerMCPTools(server *mcp.Server, permission mcpPermission) {
 	mcp.AddTool(server, mcpReadOnlyTool(
 		"baby_tracker_get_summary",
 		"读取每日概览",
-		"读取指定日期的奶量目标、喂养次数、排泄次数、上次喂养和快捷按钮。日期格式为 YYYY-MM-DD，省略时使用今天。",
+		"读取指定日期的奶量目标、喂养次数、排泄次数、上次喂养和快捷按钮。基础与进阶档仅可读取最近 30 天。",
 	), a.mcpGetSummary)
 	mcp.AddTool(server, mcpReadOnlyTool(
 		"baby_tracker_list_records",
 		"列出记录",
 		mcpListRecordsDescription,
 	), a.mcpListRecords)
+	mcp.AddTool(server, mcpReadOnlyTool(
+		"baby_tracker_list_growth_logs",
+		"列出成长记录",
+		"列出体重和身高记录。基础与进阶档仅返回最近 30 天，完全档可查询全部历史。",
+	), a.mcpListGrowthLogs)
 	mcp.AddTool(server, mcpReadOnlyTool(
 		"baby_tracker_get_baby",
 		"读取宝宝资料",
@@ -267,12 +496,15 @@ func (a *App) registerMCPTools(server *mcp.Server) {
 	mcp.AddTool(server, mcpReadOnlyTool(
 		"baby_tracker_list_quick_buttons",
 		"列出快捷按钮",
-		"列出已启用的快捷记录按钮及其类型、子类型、预设量和排序。",
+		"列出快捷记录按钮及其类型、子类型、预设量和排序。基础与进阶档只返回已启用按钮。",
 	), a.mcpListQuickButtons)
+	if !permission.allows(mcpPermissionAdvanced) {
+		return
+	}
 	mcp.AddTool(server, mcpWriteTool(
 		"baby_tracker_create_record",
 		"创建记录",
-		"创建一条喂养、排泄、症状或补充记录。优先提供准确时间；省略时使用当前本地时间。",
+		"创建一条喂养、排泄、症状或补充记录。基础档不可用；进阶档只能记录最近 30 天。",
 		false,
 	), a.mcpCreateRecord)
 	mcp.AddTool(server, mcpWriteTool(
@@ -281,6 +513,28 @@ func (a *App) registerMCPTools(server *mcp.Server) {
 		"按快捷按钮 ID 创建一条记录。按钮必须存在且已启用；省略时间时使用当前本地时间。",
 		false,
 	), a.mcpPressQuickButton)
+	mcp.AddTool(server, mcpWriteTool(
+		"baby_tracker_add_growth_log",
+		"新增成长记录",
+		"新增一条体重或身高记录。进阶档只能记录最近 30 天；完全档可补录任意日期。",
+		false,
+	), a.mcpAddGrowthLog)
+	mcp.AddTool(server, mcpWriteTool(
+		"baby_tracker_record_vaccine",
+		"记录疫苗接种",
+		"记录某个疫苗剂次的接种日期和备注。",
+		true,
+	), a.mcpRecordVaccine)
+	mcp.AddTool(server, mcpWriteTool(
+		"baby_tracker_record_health_followup",
+		"记录健康随访",
+		"记录一次健康随访的完成日期和备注。",
+		true,
+	), a.mcpRecordHealthFollowup)
+	if !permission.allows(mcpPermissionFull) {
+		return
+	}
+	a.registerMCPFullTools(server)
 }
 
 func mcpReadOnlyTool(name, title, description string) *mcp.Tool {
@@ -315,6 +569,23 @@ func mcpWriteTool(name, title, description string, idempotent bool) *mcp.Tool {
 	}
 }
 
+func mcpDestructiveTool(name, title, description string) *mcp.Tool {
+	destructive := true
+	openWorld := false
+	return &mcp.Tool{
+		Name:        name,
+		Title:       title,
+		Description: description,
+		Annotations: &mcp.ToolAnnotations{
+			Title:           title,
+			ReadOnlyHint:    false,
+			DestructiveHint: &destructive,
+			OpenWorldHint:   &openWorld,
+			IdempotentHint:  false,
+		},
+	}
+}
+
 type mcpSummaryInput struct {
 	Date string `json:"date,omitempty" jsonschema:"日期，格式 YYYY-MM-DD；省略时使用今天"`
 }
@@ -328,32 +599,95 @@ func (a *App) mcpGetSummary(ctx context.Context, _ *mcp.CallToolRequest, input m
 	if err != nil {
 		return nil, mcpSummaryOutput{}, err
 	}
+	permission, err := a.validateMCPDateAccess(ctx, targetDate)
+	if err != nil {
+		return nil, mcpSummaryOutput{}, err
+	}
 	summary, err := a.todaySummaryData(ctx, targetDate, mcpServiceActor())
 	if err != nil {
 		return nil, mcpSummaryOutput{}, fmt.Errorf("加载每日概览失败: %w", err)
+	}
+	if permission != mcpPermissionFull {
+		start := mcpRecentStartDate() + " 00:00:00"
+		end := today().Format("2006-01-02") + " 23:59:59"
+		recent, err := a.queryMaps(ctx,
+			"SELECT * FROM records WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC, id DESC LIMIT 5",
+			start, end)
+		if err != nil {
+			return nil, mcpSummaryOutput{}, fmt.Errorf("加载最近记录失败: %w", err)
+		}
+		lastFeed, err := a.queryOne(ctx,
+			"SELECT * FROM records WHERE type = 'feed' AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp DESC, id DESC LIMIT 1",
+			start, end)
+		if err != nil && !isNoRows(err) {
+			return nil, mcpSummaryOutput{}, fmt.Errorf("加载最近喂养失败: %w", err)
+		}
+		summary["recent_records"] = recent
+		summary["last_feed_time"] = nil
+		if lastFeed != nil {
+			summary["last_feed_time"] = lastFeed["timestamp"]
+		}
+		summary["data_scope_start"] = mcpRecentStartDate()
+		summary["data_scope_end"] = today().Format("2006-01-02")
+	} else {
+		summary["data_scope_start"] = nil
+		summary["data_scope_end"] = nil
 	}
 	return nil, mcpSummaryOutput{Summary: summary}, nil
 }
 
 type mcpListRecordsInput struct {
-	Date   string `json:"date,omitempty" jsonschema:"日期，格式 YYYY-MM-DD；省略时使用今天"`
-	Type   string `json:"type,omitempty" jsonschema:"记录类型：feed、excrete、symptom 或 supplement；省略时返回全部类型"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"每页条数，默认 50，最大 200"`
-	Offset int    `json:"offset,omitempty" jsonschema:"分页偏移量，默认 0"`
+	Date      string `json:"date,omitempty" jsonschema:"单日日期，格式 YYYY-MM-DD；省略时使用今天。与 start_date/end_date 二选一"`
+	StartDate string `json:"start_date,omitempty" jsonschema:"范围起始日期，格式 YYYY-MM-DD"`
+	EndDate   string `json:"end_date,omitempty" jsonschema:"范围结束日期，格式 YYYY-MM-DD"`
+	Type      string `json:"type,omitempty" jsonschema:"记录类型：feed、excrete、symptom 或 supplement；省略时返回全部类型"`
+	Limit     int    `json:"limit,omitempty" jsonschema:"每页条数，默认 50，最大 200"`
+	Offset    int    `json:"offset,omitempty" jsonschema:"分页偏移量，默认 0"`
 }
 
 type mcpListRecordsOutput struct {
-	Date    string           `json:"date" jsonschema:"查询日期"`
-	Records []map[string]any `json:"records" jsonschema:"记录列表"`
-	Total   int64            `json:"total" jsonschema:"该日期与类型下的总记录数"`
-	Limit   int              `json:"limit" jsonschema:"当前分页大小"`
-	Offset  int              `json:"offset" jsonschema:"当前分页偏移量"`
-	HasMore bool             `json:"has_more" jsonschema:"是否还有下一页"`
+	Date      string           `json:"date,omitempty" jsonschema:"单日查询日期"`
+	StartDate string           `json:"start_date" jsonschema:"查询起始日期"`
+	EndDate   string           `json:"end_date" jsonschema:"查询结束日期"`
+	Records   []map[string]any `json:"records" jsonschema:"记录列表"`
+	Total     int64            `json:"total" jsonschema:"该日期范围与类型下的总记录数"`
+	Limit     int              `json:"limit" jsonschema:"当前分页大小"`
+	Offset    int              `json:"offset" jsonschema:"当前分页偏移量"`
+	HasMore   bool             `json:"has_more" jsonschema:"是否还有下一页"`
 }
 
 func (a *App) mcpListRecords(ctx context.Context, _ *mcp.CallToolRequest, input mcpListRecordsInput) (*mcp.CallToolResult, mcpListRecordsOutput, error) {
-	targetDate, err := normalizeMCPDate(input.Date)
-	if err != nil {
+	startDate := strings.TrimSpace(input.StartDate)
+	endDate := strings.TrimSpace(input.EndDate)
+	singleDate := strings.TrimSpace(input.Date)
+	if startDate == "" && endDate == "" {
+		var err error
+		singleDate, err = normalizeMCPDate(singleDate)
+		if err != nil {
+			return nil, mcpListRecordsOutput{}, err
+		}
+		startDate, endDate = singleDate, singleDate
+	} else {
+		if singleDate != "" {
+			return nil, mcpListRecordsOutput{}, fmt.Errorf("date 不能与 start_date/end_date 同时使用")
+		}
+		var err error
+		startDate, err = normalizeMCPDate(startDate)
+		if err != nil {
+			return nil, mcpListRecordsOutput{}, err
+		}
+		endDate, err = normalizeMCPDate(endDate)
+		if err != nil {
+			return nil, mcpListRecordsOutput{}, err
+		}
+	}
+	if startDate > endDate {
+		return nil, mcpListRecordsOutput{}, fmt.Errorf("start_date 不能晚于 end_date")
+	}
+	if _, err := a.validateMCPDateAccess(ctx, startDate); err != nil {
+		return nil, mcpListRecordsOutput{}, err
+	}
+	if _, err := a.validateMCPDateAccess(ctx, endDate); err != nil {
 		return nil, mcpListRecordsOutput{}, err
 	}
 	recordType := strings.TrimSpace(input.Type)
@@ -371,7 +705,8 @@ func (a *App) mcpListRecords(ctx context.Context, _ *mcp.CallToolRequest, input 
 	if offset < 0 {
 		offset = 0
 	}
-	start, end := dayRange(targetDate)
+	start, _ := dayRange(startDate)
+	_, end := dayRange(endDate)
 	where := " WHERE timestamp >= ? AND timestamp <= ?"
 	args := []any{start, end}
 	if recordType != "" {
@@ -391,12 +726,14 @@ func (a *App) mcpListRecords(ctx context.Context, _ *mcp.CallToolRequest, input 
 	}
 	total := intValue(countRow["total"])
 	return nil, mcpListRecordsOutput{
-		Date:    targetDate,
-		Records: records,
-		Total:   total,
-		Limit:   limit,
-		Offset:  offset,
-		HasMore: int64(offset+len(records)) < total,
+		Date:      singleDate,
+		StartDate: startDate,
+		EndDate:   endDate,
+		Records:   records,
+		Total:     total,
+		Limit:     limit,
+		Offset:    offset,
+		HasMore:   int64(offset+len(records)) < total,
 	}, nil
 }
 
@@ -422,9 +759,17 @@ type mcpQuickButtonsOutput struct {
 }
 
 func (a *App) mcpListQuickButtons(ctx context.Context, _ *mcp.CallToolRequest, _ mcpEmptyInput) (*mcp.CallToolResult, mcpQuickButtonsOutput, error) {
-	buttons, err := a.queryMaps(ctx,
-		`SELECT id, type, sub_type, label, amount, sort_order, food_unit
-		 FROM quick_buttons WHERE is_active = 1 ORDER BY sort_order, id`)
+	query := `SELECT id, type, sub_type, label, amount, sort_order, is_active, food_unit
+		FROM quick_buttons WHERE is_active = 1 ORDER BY sort_order, id`
+	permission, err := a.mcpPermissionLevel(ctx)
+	if err != nil {
+		return nil, mcpQuickButtonsOutput{}, fmt.Errorf("加载 MCP 权限失败: %w", err)
+	}
+	if permission == mcpPermissionFull {
+		query = `SELECT id, type, sub_type, label, amount, sort_order, is_active, food_unit
+			FROM quick_buttons ORDER BY sort_order, id`
+	}
+	buttons, err := a.queryMaps(ctx, query)
 	if err != nil {
 		return nil, mcpQuickButtonsOutput{}, fmt.Errorf("加载快捷按钮失败: %w", err)
 	}
@@ -450,6 +795,9 @@ type mcpRecordOutput struct {
 }
 
 func (a *App) mcpCreateRecord(ctx context.Context, _ *mcp.CallToolRequest, input mcpCreateRecordInput) (*mcp.CallToolResult, mcpRecordOutput, error) {
+	if _, err := a.requireMCPPermission(ctx, mcpPermissionAdvanced); err != nil {
+		return nil, mcpRecordOutput{}, err
+	}
 	recordType := strings.TrimSpace(input.Type)
 	subType := strings.TrimSpace(input.SubType)
 	if !validRecordType(recordType) {
@@ -460,6 +808,9 @@ func (a *App) mcpCreateRecord(ctx context.Context, _ *mcp.CallToolRequest, input
 	}
 	timestamp, err := normalizeMCPTimestamp(input.Timestamp)
 	if err != nil {
+		return nil, mcpRecordOutput{}, err
+	}
+	if _, err := a.validateMCPTimestampAccess(ctx, timestamp); err != nil {
 		return nil, mcpRecordOutput{}, err
 	}
 	result, err := a.db.ExecContext(ctx,
@@ -495,6 +846,9 @@ type mcpQuickButtonRecordOutput struct {
 }
 
 func (a *App) mcpPressQuickButton(ctx context.Context, _ *mcp.CallToolRequest, input mcpPressQuickButtonInput) (*mcp.CallToolResult, mcpQuickButtonRecordOutput, error) {
+	if _, err := a.requireMCPPermission(ctx, mcpPermissionAdvanced); err != nil {
+		return nil, mcpQuickButtonRecordOutput{}, err
+	}
 	if input.ButtonID <= 0 {
 		return nil, mcpQuickButtonRecordOutput{}, fmt.Errorf("button_id 必须是正整数")
 	}
@@ -508,6 +862,9 @@ func (a *App) mcpPressQuickButton(ctx context.Context, _ *mcp.CallToolRequest, i
 	}
 	timestamp, err := normalizeMCPTimestamp(input.Timestamp)
 	if err != nil {
+		return nil, mcpQuickButtonRecordOutput{}, err
+	}
+	if _, err := a.validateMCPTimestampAccess(ctx, timestamp); err != nil {
 		return nil, mcpQuickButtonRecordOutput{}, err
 	}
 	result, err := a.db.ExecContext(ctx,

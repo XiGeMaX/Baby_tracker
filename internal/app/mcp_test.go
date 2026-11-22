@@ -38,6 +38,43 @@ func enableMCPForTest(t *testing.T, application *App) {
 	}
 }
 
+func setMCPPermissionForTest(t *testing.T, application *App, permission mcpPermission) {
+	t.Helper()
+	if err := application.setMCPPermissionLevel(context.Background(), permission); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func listMCPToolsForPermission(t *testing.T, application *App, permission mcpPermission) map[string]bool {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := application.newMCPServer(permission).Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("connect in-memory MCP server: %v", err)
+	}
+	defer serverSession.Close()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "permission-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect in-memory MCP client: %v", err)
+	}
+	defer session.Close()
+
+	listed, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("list MCP tools: %v", err)
+	}
+	toolNames := make(map[string]bool, len(listed.Tools))
+	for _, tool := range listed.Tools {
+		toolNames[tool.Name] = true
+	}
+	return toolNames
+}
+
 func sessionCookieForUser(t *testing.T, application *App, userID int64) *http.Cookie {
 	t.Helper()
 	payload, err := json.Marshal(sessionState{
@@ -186,6 +223,7 @@ func TestMCPSDKInitializesListsToolsAndCreatesRecords(t *testing.T) {
 	const apiKey = "sdk-test-key"
 	configureMCPKey(t, application, apiKey)
 	enableMCPForTest(t, application)
+	setMCPPermissionForTest(t, application, mcpPermissionAdvanced)
 
 	httpServer := httptest.NewServer(application.Handler())
 	defer httpServer.Close()
@@ -219,10 +257,14 @@ func TestMCPSDKInitializesListsToolsAndCreatesRecords(t *testing.T) {
 	for _, name := range []string{
 		"baby_tracker_get_summary",
 		"baby_tracker_list_records",
+		"baby_tracker_list_growth_logs",
 		"baby_tracker_get_baby",
 		"baby_tracker_list_quick_buttons",
 		"baby_tracker_create_record",
 		"baby_tracker_press_quick_button",
+		"baby_tracker_add_growth_log",
+		"baby_tracker_record_vaccine",
+		"baby_tracker_record_health_followup",
 	} {
 		if !toolNames[name] {
 			t.Errorf("MCP tool %q is missing", name)
@@ -257,6 +299,148 @@ func TestMCPSDKInitializesListsToolsAndCreatesRecords(t *testing.T) {
 	}
 }
 
+func TestMCPPermissionToolExposure(t *testing.T) {
+	tests := []struct {
+		name       string
+		permission mcpPermission
+		included   []string
+		excluded   []string
+	}{
+		{
+			name:       "basic",
+			permission: mcpPermissionBasic,
+			included: []string{
+				"baby_tracker_get_summary",
+				"baby_tracker_list_records",
+				"baby_tracker_list_growth_logs",
+				"baby_tracker_get_baby",
+				"baby_tracker_list_quick_buttons",
+			},
+			excluded: []string{
+				"baby_tracker_create_record",
+				"baby_tracker_add_growth_log",
+				"baby_tracker_update_baby",
+				"baby_tracker_clear_records",
+			},
+		},
+		{
+			name:       "advanced",
+			permission: mcpPermissionAdvanced,
+			included: []string{
+				"baby_tracker_create_record",
+				"baby_tracker_press_quick_button",
+				"baby_tracker_add_growth_log",
+				"baby_tracker_record_vaccine",
+				"baby_tracker_record_health_followup",
+			},
+			excluded: []string{
+				"baby_tracker_update_baby",
+				"baby_tracker_manage_users",
+				"baby_tracker_clear_records",
+			},
+		},
+		{
+			name:       "full",
+			permission: mcpPermissionFull,
+			included: []string{
+				"baby_tracker_update_baby",
+				"baby_tracker_manage_quick_buttons",
+				"baby_tracker_update_settings",
+				"baby_tracker_manage_users",
+				"baby_tracker_clear_records",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			application := newTestApp(t)
+			toolNames := listMCPToolsForPermission(t, application, tt.permission)
+			for _, name := range tt.included {
+				if !toolNames[name] {
+					t.Errorf("permission %s is missing tool %q", tt.permission, name)
+				}
+			}
+			for _, name := range tt.excluded {
+				if toolNames[name] {
+					t.Errorf("permission %s unexpectedly exposes tool %q", tt.permission, name)
+				}
+			}
+		})
+	}
+}
+
+func TestMCPPermissionEnforcesRuntimeAccess(t *testing.T) {
+	t.Run("basic rejects writes", func(t *testing.T) {
+		application := newTestApp(t)
+		setMCPPermissionForTest(t, application, mcpPermissionBasic)
+
+		_, _, err := application.mcpCreateRecord(context.Background(), nil, mcpCreateRecordInput{
+			Type:      "feed",
+			SubType:   "formula",
+			Timestamp: today().Format("2006-01-02") + " 10:00:00",
+		})
+		if err == nil || !strings.Contains(err.Error(), "需要进阶权限") {
+			t.Fatalf("basic write error = %v, want advanced permission error", err)
+		}
+		var count int
+		if err := application.db.QueryRow("SELECT COUNT(*) FROM records").Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("basic permission created %d records, want 0", count)
+		}
+	})
+
+	t.Run("basic rejects data outside recent window", func(t *testing.T) {
+		application := newTestApp(t)
+		setMCPPermissionForTest(t, application, mcpPermissionBasic)
+		oldDate := today().AddDate(0, 0, -mcpRecentDataDays).Format("2006-01-02")
+
+		_, _, err := application.mcpListRecords(context.Background(), nil, mcpListRecordsInput{Date: oldDate})
+		if err == nil || !strings.Contains(err.Error(), "只能访问") {
+			t.Fatalf("basic old-date error = %v, want recent-window error", err)
+		}
+
+		setMCPPermissionForTest(t, application, mcpPermissionFull)
+		if _, _, err := application.mcpListRecords(context.Background(), nil, mcpListRecordsInput{Date: oldDate}); err != nil {
+			t.Fatalf("full permission old-date read failed: %v", err)
+		}
+	})
+
+	t.Run("advanced rejects full management", func(t *testing.T) {
+		application := newTestApp(t)
+		setMCPPermissionForTest(t, application, mcpPermissionAdvanced)
+
+		_, _, err := application.mcpClearRecords(context.Background(), nil, mcpClearRecordsInput{
+			Confirmation: "CLEAR_ALL_RECORDS",
+		})
+		if err == nil || !strings.Contains(err.Error(), "需要完全权限") {
+			t.Fatalf("advanced full-management error = %v, want full permission error", err)
+		}
+	})
+
+	t.Run("full normalizes old and invalid dates", func(t *testing.T) {
+		application := newTestApp(t)
+		setMCPPermissionForTest(t, application, mcpPermissionFull)
+		oldDate := today().AddDate(0, 0, -mcpRecentDataDays).Format("2006-01-02")
+		weight := 5.2
+
+		if _, _, err := application.mcpAddGrowthLog(context.Background(), nil, mcpGrowthLogInput{
+			Weight:       &weight,
+			RecordedDate: oldDate,
+		}); err != nil {
+			t.Fatalf("full permission old growth log failed: %v", err)
+		}
+		if _, _, err := application.mcpAddGrowthLog(context.Background(), nil, mcpGrowthLogInput{
+			Weight:       &weight,
+			RecordedDate: "2026-1-01",
+		}); err == nil {
+			t.Fatal("invalid growth date was accepted")
+		}
+	})
+}
+
 func TestMCPRateLimiterUsesFixedWindow(t *testing.T) {
 	limiter := newMCPRateLimiter(2, time.Minute)
 	start := time.Unix(1000, 0)
@@ -282,14 +466,18 @@ func TestMCPConfigSwitchControlsAvailability(t *testing.T) {
 		t.Fatalf("get MCP config status = %d, body = %s", initial.Code, initial.Body.String())
 	}
 	var initialPayload struct {
-		Enabled   bool `json:"enabled"`
-		Available bool `json:"available"`
+		Enabled         bool   `json:"enabled"`
+		Available       bool   `json:"available"`
+		PermissionLevel string `json:"permission_level"`
 	}
 	if err := json.Unmarshal(initial.Body.Bytes(), &initialPayload); err != nil {
 		t.Fatal(err)
 	}
 	if initialPayload.Enabled || initialPayload.Available {
 		t.Fatalf("default MCP config = %+v, want all disabled", initialPayload)
+	}
+	if initialPayload.PermissionLevel != string(mcpPermissionBasic) {
+		t.Fatalf("default MCP permission = %q, want basic", initialPayload.PermissionLevel)
 	}
 
 	bypassSettings := httptest.NewRequest(http.MethodPut, "/api/settings",
@@ -299,6 +487,14 @@ func TestMCPConfigSwitchControlsAvailability(t *testing.T) {
 	if bypassResponse.Code != http.StatusBadRequest {
 		t.Fatalf("generic settings MCP bypass status = %d, body = %s",
 			bypassResponse.Code, bypassResponse.Body.String())
+	}
+	permissionBypass := httptest.NewRequest(http.MethodPut, "/api/settings",
+		strings.NewReader(`{"mcp_permission_level":"full"}`))
+	permissionBypass.Header.Set("Content-Type", "application/json")
+	permissionBypassResponse := performRequest(application, permissionBypass, cookie)
+	if permissionBypassResponse.Code != http.StatusBadRequest {
+		t.Fatalf("generic settings MCP permission bypass status = %d, body = %s",
+			permissionBypassResponse.Code, permissionBypassResponse.Body.String())
 	}
 
 	newEnableRequest := func() *http.Request {
@@ -346,6 +542,55 @@ func TestMCPConfigSwitchControlsAvailability(t *testing.T) {
 	if afterDisable.Code != http.StatusNotFound {
 		t.Fatalf("MCP request after disabling status = %d, want %d",
 			afterDisable.Code, http.StatusNotFound)
+	}
+}
+
+func TestMCPPermissionConfigRequiresFullAccessAcknowledgement(t *testing.T) {
+	application := newTestApp(t)
+	cookie := loginAsAdmin(t, application)
+
+	request := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPut, "/api/mcp/config", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		return performRequest(application, req, cookie)
+	}
+
+	rejected := request(`{"permission_level":"full"}`)
+	if rejected.Code != http.StatusBadRequest {
+		t.Fatalf("full permission without acknowledgement status = %d, body = %s",
+			rejected.Code, rejected.Body.String())
+	}
+
+	accepted := request(`{"permission_level":"full","acknowledge_full_access":true}`)
+	if accepted.Code != http.StatusOK {
+		t.Fatalf("full permission with acknowledgement status = %d, body = %s",
+			accepted.Code, accepted.Body.String())
+	}
+	var payload struct {
+		PermissionLevel string `json:"permission_level"`
+		Message         string `json:"message"`
+		FullAccessWarn  string `json:"full_access_warning"`
+	}
+	if err := json.Unmarshal(accepted.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.PermissionLevel != string(mcpPermissionFull) {
+		t.Fatalf("full permission level = %q", payload.PermissionLevel)
+	}
+	if payload.Message != "MCP 权限已设为完全" {
+		t.Fatalf("full permission message = %q", payload.Message)
+	}
+	if !strings.Contains(payload.FullAccessWarn, "备份") {
+		t.Fatalf("full access warning = %q, want backup guidance", payload.FullAccessWarn)
+	}
+
+	downgraded := request(`{"permission_level":"advanced"}`)
+	if downgraded.Code != http.StatusOK {
+		t.Fatalf("downgrade permission status = %d, body = %s",
+			downgraded.Code, downgraded.Body.String())
+	}
+	if permission, err := application.mcpPermissionLevel(context.Background()); err != nil || permission != mcpPermissionAdvanced {
+		t.Fatalf("stored permission = %q, err = %v", permission, err)
 	}
 }
 

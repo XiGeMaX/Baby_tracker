@@ -61,6 +61,12 @@ function initAdmin() {
             if (ownerPwBtn) showResetPasswordModal(parseInt(ownerPwBtn.dataset.adminId), ownerPwBtn.dataset.adminName);
             const renameBtn = e.target.closest('[data-rename-user]');
             if (renameBtn) showRenameUserModal(parseInt(renameBtn.dataset.renameUser), renameBtn.dataset.renameName);
+            const backupBeforeFullBtn = e.target.closest('[data-backup-before-full]');
+            if (backupBeforeFullBtn) backupExport();
+        });
+        document.addEventListener('change', e => {
+            const permissionInput = e.target.closest('[data-mcp-permission]');
+            if (permissionInput) requestMcpPermissionChange(permissionInput.value);
         });
     }
 }
@@ -550,6 +556,7 @@ function renderLogs(logs) {
         '生成HA密钥': 'text-emerald-400',
         '备份数据': 'text-blue-400',
         '恢复数据': 'text-amber-400',
+        '修改MCP权限': 'text-amber-400',
     };
 
     container.innerHTML = logs.map(l => {
@@ -812,9 +819,105 @@ function haToggleAllButtons() {
     checks.forEach(c => { c.checked = !allChecked; });
 }
 
+let _currentMcpPermission = 'basic';
+let _mcpPermissionBusy = false;
+
+const MCP_PERMISSION_COPY = {
+    basic: '只读最近 30 天的记录、成长数据和宝宝资料',
+    advanced: '可读取最近 30 天数据，并新增日常、成长、疫苗和健康随访记录',
+    full: '可访问全部历史数据，并修改宝宝资料、业务配置和管理数据',
+};
+
+const MCP_PERMISSION_LABELS = {
+    basic: '基础',
+    advanced: '进阶',
+    full: '完全',
+};
+
+function updateMcpPermissionUI(config) {
+    const requested = config?.permission_level;
+    if (Object.prototype.hasOwnProperty.call(MCP_PERMISSION_LABELS, requested)) {
+        _currentMcpPermission = requested;
+    }
+    document.querySelectorAll('[data-mcp-permission]').forEach(input => {
+        input.checked = input.value === _currentMcpPermission;
+        input.disabled = _mcpPermissionBusy;
+    });
+    const summary = document.getElementById('mcp-permission-summary');
+    if (summary) summary.textContent = MCP_PERMISSION_COPY[_currentMcpPermission] || MCP_PERMISSION_COPY.basic;
+    const pill = document.getElementById('mcp-permission-level-pill');
+    if (pill) {
+        pill.textContent = MCP_PERMISSION_LABELS[_currentMcpPermission] || MCP_PERMISSION_LABELS.basic;
+        pill.classList.toggle('is-warning', _currentMcpPermission === 'full');
+    }
+    const warning = document.getElementById('mcp-full-permission-warning');
+    if (warning) warning.hidden = _currentMcpPermission !== 'full';
+}
+
+function setMcpPermissionBusy(busy) {
+    _mcpPermissionBusy = busy;
+    document.querySelectorAll('[data-mcp-permission]').forEach(input => {
+        input.disabled = busy;
+    });
+}
+
+async function requestMcpPermissionChange(level) {
+    if (_mcpPermissionBusy || !Object.prototype.hasOwnProperty.call(MCP_PERMISSION_LABELS, level)) return;
+    if (level === _currentMcpPermission) return;
+    if (level === 'full' && _currentMcpPermission !== 'full') {
+        updateMcpPermissionUI({ permission_level: _currentMcpPermission });
+        const modal = document.getElementById('mcp-full-access-modal');
+        openAppModal(modal, {
+            focusSelector: '#mcp-full-access-modal .btn-secondary',
+            onDismiss: closeMcpFullAccessModal,
+        });
+        return;
+    }
+    await saveMcpPermission(level, false);
+}
+
+async function saveMcpPermission(level, acknowledgeFullAccess) {
+    if (_mcpPermissionBusy) return;
+    setMcpPermissionBusy(true);
+    try {
+        const result = await api('/api/mcp/config', {
+            method: 'PUT',
+            body: JSON.stringify({
+                permission_level: level,
+                acknowledge_full_access: acknowledgeFullAccess,
+            }),
+        });
+        updateMcpServiceStatus(result);
+        showToast(result.message || `MCP 权限已设为${MCP_PERMISSION_LABELS[level]}`);
+    } catch (e) {
+        updateMcpPermissionUI({ permission_level: _currentMcpPermission });
+        showToast(e.message);
+    } finally {
+        setMcpPermissionBusy(false);
+    }
+}
+
+function closeMcpFullAccessModal() {
+    const modal = document.getElementById('mcp-full-access-modal');
+    closeAppModal(modal);
+    updateMcpPermissionUI({ permission_level: _currentMcpPermission });
+}
+
+async function backupAndEnableMcpFull() {
+    backupExport();
+    closeMcpFullAccessModal();
+    await saveMcpPermission('full', true);
+}
+
+async function confirmMcpFullAccess() {
+    closeMcpFullAccessModal();
+    await saveMcpPermission('full', true);
+}
+
 function updateMcpServiceStatus(config) {
     const enabled = config?.mcp_enabled ?? config?.enabled ?? false;
     const available = config?.mcp_available ?? config?.available ?? enabled;
+    const permissionLabel = config?.permission_label || MCP_PERMISSION_LABELS[config?.permission_level] || '基础';
     const state = document.getElementById('mcp-service-state');
     const status = document.getElementById('mcp-service-status');
     const endpoint = document.getElementById('mcp-endpoint');
@@ -829,7 +932,7 @@ function updateMcpServiceStatus(config) {
     }
     if (status) {
         status.textContent = available
-            ? 'MCP 已启用，请使用独立 API 密钥访问'
+            ? `MCP 已启用，当前为${permissionLabel}权限`
             : '默认关闭，可由管理员独立启用';
     }
     if (endpoint) {
@@ -843,6 +946,7 @@ function updateMcpServiceStatus(config) {
         toggle.dataset.ready = 'true';
         toggle.disabled = toggle.dataset.busy === 'true';
     }
+    updateMcpPermissionUI(config);
     setMcpSettingsExpanded(enabled);
 }
 
@@ -872,10 +976,7 @@ async function toggleMcpService() {
             method: 'PUT',
             body: JSON.stringify({ enabled }),
         });
-        updateMcpServiceStatus({
-            mcp_enabled: result.enabled,
-            mcp_available: result.available,
-        });
+        updateMcpServiceStatus(result);
         showToast(result.message || (enabled ? 'MCP 服务已开启' : 'MCP 服务已关闭'));
     } catch (e) {
         showToast(e.message);

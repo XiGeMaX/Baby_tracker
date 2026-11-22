@@ -492,6 +492,11 @@ body.app-modal-open {
     border-color: rgba(245, 158, 11, 0.32);
     background: rgba(245, 158, 11, 0.1);
 }
+.admin-status-pill.is-warning {
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.38);
+    background: rgba(245, 158, 11, 0.12);
+}
 .mcp-settings-header {
     display: flex;
     align-items: flex-start;
@@ -506,6 +511,134 @@ body.app-modal-open {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
+}
+.mcp-permission-panel {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid color-mix(in srgb, var(--c-border) 82%, transparent);
+}
+.mcp-permission-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.mcp-permission-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+.mcp-permission-option {
+    position: relative;
+    min-width: 0;
+    cursor: pointer;
+}
+.mcp-permission-option input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+.mcp-permission-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 58px;
+    padding: 10px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--c-surface) 68%, transparent);
+    color: var(--c-text-secondary);
+    transition:
+        border-color 160ms ease,
+        background-color 160ms ease,
+        color 160ms ease,
+        box-shadow 160ms ease;
+}
+.mcp-permission-option:hover .mcp-permission-control {
+    border-color: color-mix(in srgb, var(--c-accent) 38%, var(--c-border));
+    background: color-mix(in srgb, var(--c-accent) 6%, var(--c-surface));
+}
+.mcp-permission-option input:focus-visible + .mcp-permission-control {
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 78%, white 22%);
+    outline-offset: 2px;
+}
+.mcp-permission-option input:checked + .mcp-permission-control {
+    border-color: color-mix(in srgb, var(--c-accent) 54%, transparent);
+    background: color-mix(in srgb, var(--c-accent) 11%, var(--c-surface));
+    color: var(--c-text-primary);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-accent) 14%, transparent);
+}
+.mcp-permission-option input:disabled + .mcp-permission-control {
+    cursor: wait;
+    opacity: 0.58;
+}
+.mcp-permission-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    color: var(--c-text-muted);
+}
+.mcp-permission-option input:checked + .mcp-permission-control .mcp-permission-icon {
+    color: var(--c-accent);
+}
+.mcp-permission-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.25;
+}
+.mcp-permission-name {
+    color: inherit;
+    font-size: var(--text-label);
+    font-weight: 600;
+}
+.mcp-permission-description {
+    margin-top: 3px;
+    color: var(--c-text-muted);
+    font-size: 10px;
+    white-space: nowrap;
+}
+.mcp-full-permission-warning {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: var(--radius-control);
+    background: rgba(245, 158, 11, 0.08);
+}
+.mcp-full-permission-warning[hidden] {
+    display: none;
+}
+.mcp-warning-copy {
+    min-width: 0;
+    flex: 1;
+}
+.mcp-warning-backup {
+    flex: 0 0 auto;
+    min-height: var(--control-height-sm);
+    padding: 6px 10px;
+    border-color: rgba(245, 158, 11, 0.28);
+    color: var(--c-warning);
+    font-size: var(--text-label);
+}
+.mcp-risk-list {
+    padding: 12px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-control);
+    background: var(--c-base);
+}
+.mcp-risk-list p + p {
+    margin-top: 8px;
+}
+.mcp-warning-actions {
     flex-wrap: wrap;
 }
 .admin-switch {
@@ -3920,6 +4053,25 @@ input[type="time"].input-field::-webkit-calendar-picker-indicator {
     .app-modal-panel {
         width: 100%;
         max-height: min(88vh, 720px);
+    }
+
+    .mcp-permission-control {
+        flex-direction: column;
+        align-items: flex-start;
+        min-height: 72px;
+    }
+
+    .mcp-permission-description {
+        white-space: normal;
+    }
+
+    .mcp-full-permission-warning {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .mcp-warning-backup {
+        width: 100%;
     }
 }
 

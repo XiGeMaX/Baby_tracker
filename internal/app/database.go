@@ -193,6 +193,7 @@ func (a *App) initDatabase(ctx context.Context) error {
 		"custom_daily_target":   "",
 		"feeds_per_day":         "8",
 		"mcp_enabled":           "0",
+		"mcp_permission_level":  "basic",
 		"reminder_interval_min": "180",
 	}
 	for key, value := range defaultSettings {

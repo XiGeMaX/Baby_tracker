@@ -41,6 +41,7 @@
                                 <div class="mcp-settings-title-row">
                                     <p class="text-xs text-text-secondary">MCP 服务</p>
                                     <span id="mcp-service-state" class="admin-status-pill">未启用</span>
+                                    <span id="mcp-permission-level-pill" class="admin-status-pill">基础</span>
                                 </div>
                                 <p id="mcp-service-status" class="text-[11px] text-text-muted mt-0.5">默认关闭，可由管理员独立启用</p>
                             </div>
@@ -50,6 +51,53 @@
                                 <i data-lucide="power" class="admin-switch-icon" aria-hidden="true"></i>
                                 <span class="admin-switch-thumb" aria-hidden="true"></span>
                             </button>
+                        </div>
+                        <div class="mcp-permission-panel">
+                            <div class="mcp-permission-heading">
+                                <div>
+                                    <p class="field-label mb-0">MCP 权限</p>
+                                    <p id="mcp-permission-summary" class="text-[10px] text-text-muted mt-1">只读最近 30 天的记录、成长数据和宝宝资料</p>
+                                </div>
+                            </div>
+                            <div class="mcp-permission-options" role="radiogroup" aria-label="MCP 权限档位">
+                                <label class="mcp-permission-option">
+                                    <input type="radio" name="mcp-permission" value="basic" data-mcp-permission>
+                                    <span class="mcp-permission-control">
+                                        <i data-lucide="book-open" class="mcp-permission-icon" aria-hidden="true"></i>
+                                        <span class="mcp-permission-copy">
+                                            <span class="mcp-permission-name">基础</span>
+                                            <span class="mcp-permission-description">30 天只读</span>
+                                        </span>
+                                    </span>
+                                </label>
+                                <label class="mcp-permission-option">
+                                    <input type="radio" name="mcp-permission" value="advanced" data-mcp-permission>
+                                    <span class="mcp-permission-control">
+                                        <i data-lucide="plus-circle" class="mcp-permission-icon" aria-hidden="true"></i>
+                                        <span class="mcp-permission-copy">
+                                            <span class="mcp-permission-name">进阶</span>
+                                            <span class="mcp-permission-description">可新增记录</span>
+                                        </span>
+                                    </span>
+                                </label>
+                                <label class="mcp-permission-option">
+                                    <input type="radio" name="mcp-permission" value="full" data-mcp-permission>
+                                    <span class="mcp-permission-control">
+                                        <i data-lucide="shield-alert" class="mcp-permission-icon" aria-hidden="true"></i>
+                                        <span class="mcp-permission-copy">
+                                            <span class="mcp-permission-name">完全</span>
+                                            <span class="mcp-permission-description">全部管理</span>
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+                            <div id="mcp-full-permission-warning" class="mcp-full-permission-warning" hidden>
+                                <div class="mcp-warning-copy">
+                                    <p class="text-xs font-medium text-amber-300">完全权限会扩大数据与管理风险</p>
+                                    <p class="text-[10px] text-amber-200/75 mt-1">MCP 可读取全部历史数据，并修改宝宝资料、快捷按钮、业务设置和用户。启用前请先下载完整数据备份。</p>
+                                </div>
+                                <button type="button" class="btn-secondary mcp-warning-backup" data-backup-before-full>立即备份</button>
+                            </div>
                         </div>
                         <div id="mcp-settings-details" class="mcp-settings-details" aria-hidden="true" inert>
                             <div class="mcp-settings-details-inner">
@@ -421,6 +469,28 @@
                 </div>
             </div>
         </details>
+    </div>
+</div>
+
+<!-- MCP 完全权限确认弹窗 -->
+<div id="mcp-full-access-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="mcp-full-access-title">
+    <div class="app-modal-panel">
+        <h3 id="mcp-full-access-title" class="app-modal-title mb-3">启用完全权限</h3>
+        <div class="space-y-3">
+            <div class="mcp-risk-list">
+                <p class="text-xs text-text-secondary">完全权限允许已授权 MCP 客户端读取全部历史数据，并修改宝宝资料、快捷按钮、业务设置、用户和数据记录。</p>
+                <p class="text-xs text-text-secondary">请妥善保管 MCP API 密钥，并避免在不可信网络中启用。</p>
+            </div>
+            <div class="bg-amber-500/10 border border-amber-500/25 rounded-lg p-3">
+                <p class="text-xs font-medium text-amber-300">建议先备份完整数据</p>
+                <p class="text-[10px] text-amber-200/75 mt-1">备份文件包含业务数据、用户信息和密码哈希，请保存在安全位置。</p>
+            </div>
+        </div>
+        <div class="modal-actions mcp-warning-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeMcpFullAccessModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="backupAndEnableMcpFull()">备份并启用</button>
+            <button type="button" class="btn-danger text-sm" onclick="confirmMcpFullAccess()">仍然启用</button>
+        </div>
     </div>
 </div>
 

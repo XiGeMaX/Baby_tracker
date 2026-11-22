@@ -123,8 +123,8 @@ func (a *App) updateSettings(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(key) == "" {
 			continue
 		}
-		if key == mcpEnabledSetting {
-			writeError(w, http.StatusBadRequest, "MCP 开关需使用专用接口")
+		if key == mcpEnabledSetting || key == mcpPermissionSetting {
+			writeError(w, http.StatusBadRequest, "MCP 配置需使用专用接口")
 			return
 		}
 		if isSensitiveSettingKey(key) {
