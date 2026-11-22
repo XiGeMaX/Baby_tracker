@@ -11,8 +11,16 @@ const SpaRouter = {
         '/admin': 'initAdmin',
     },
 
+    _routePath(path) {
+        const base = appBasePath();
+        if (base && (path === base || path.startsWith(`${base}/`))) {
+            return path.slice(base.length) || '/';
+        }
+        return path;
+    },
+
     init() {
-        this._currentPage = location.pathname;
+        this._currentPage = this._routePath(location.pathname);
         window.addEventListener('popstate', () => this._onPopState());
         document.addEventListener('click', e => this._onClick(e));
     },
@@ -24,7 +32,7 @@ const SpaRouter = {
             if (u.origin !== location.origin) return;
         } catch { return; }
 
-        const path = new URL(url, location.origin).pathname;
+        const path = this._routePath(new URL(url, location.origin).pathname);
         if (path === this._currentPage) return;
         if (this._transitioning) return;
 
@@ -35,7 +43,7 @@ const SpaRouter = {
     async _loadPage(path, url) {
         try {
             const sep = url.includes('?') ? '&' : '?';
-            const fetchUrl = `${url}${sep}_spa=1`;
+            const fetchUrl = `${appUrl(url)}${sep}_spa=1`;
 
             const resp = await fetch(fetchUrl, { credentials: 'same-origin' });
             if (!resp.ok) { location.href = url; return; }
@@ -47,14 +55,13 @@ const SpaRouter = {
             if (!newContent) { location.href = url; return; }
 
             const currentContent = document.getElementById('spa-content');
-
-            // 淡出 → 替换 → 淡入
-            currentContent.style.opacity = '0';
-            currentContent.style.transition = 'opacity 0.1s';
-
-            await new Promise(r => setTimeout(r, 100));
+            const motion = window.MotionFX;
+            if (motion) {
+                currentContent.getAnimations().forEach(animation => animation.cancel());
+                await motion.pageLeave(currentContent);
+                currentContent.getAnimations().forEach(animation => animation.cancel());
+            }
             currentContent.innerHTML = newContent.innerHTML;
-            currentContent.style.opacity = '1';
 
             document.title = doc.title || 'Baby Tracker';
             this._updateNavActive(path);
@@ -69,17 +76,20 @@ const SpaRouter = {
                 }
             }
 
-            history.pushState({}, '', url);
+            history.pushState({}, '', appUrl(url));
             this._currentPage = path;
 
             // 调用页面初始化函数
             const initFn = this._pageInitMap[path];
             if (initFn && typeof window[initFn] === 'function') {
-                window[initFn]();
+                Promise.resolve(window[initFn]()).catch(err => {
+                    console.error(`Page initialization failed for ${path}:`, err);
+                });
             }
 
             if (typeof lucide !== 'undefined') lucide.createIcons();
             window.scrollTo(0, 0);
+            if (motion) motion.pageEnter(currentContent);
         } catch (err) {
             console.error('SPA navigation failed:', err);
             location.href = url;
@@ -118,7 +128,7 @@ const SpaRouter = {
         }
 
         let path;
-        try { path = new URL(href, location.origin).pathname; }
+        try { path = this._routePath(new URL(href, location.origin).pathname); }
         catch { return; }
 
         if (!(path in this._pageInitMap)) return;
@@ -128,7 +138,7 @@ const SpaRouter = {
     },
 
     _onPopState() {
-        const path = location.pathname;
+        const path = this._routePath(location.pathname);
         if (path === this._currentPage) return;
         this._currentPage = path;
         location.reload();

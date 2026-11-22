@@ -3,32 +3,35 @@
 {% block title %}成长 - Baby Tracker{% endblock %}
 
 {% block content %}
-<div class="space-y-5 fade-in pb-20 md:pb-0">
-    <div class="flex items-center gap-3 flex-wrap">
-        <h1 class="text-xl font-semibold">成长</h1>
-        <span id="vaccine-age" class="text-xs text-text-muted font-mono"></span>
-        <div class="flex-1"></div>
-        <div class="flex items-center gap-2">
-            <label id="date-picker-wrap" class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors cursor-pointer relative overflow-hidden hidden">
+<div class="growth-page fade-in pb-20 md:pb-0">
+    <div class="growth-header">
+        <div class="growth-heading">
+            <h1 class="text-xl font-semibold">成长</h1>
+            <span id="vaccine-age" class="text-xs text-text-muted font-mono truncate"></span>
+        </div>
+        <div id="growth-action-slot" class="growth-action-slot">
+            <label id="date-picker-wrap" data-growth-action="schedule" class="growth-action is-active text-xs rounded border border-accent/30 text-accent hover:bg-accent/10 cursor-pointer overflow-hidden" aria-label="选择日程日期">
                 <span id="date-display">--</span>
                 <input type="date" id="schedule-date-picker" class="absolute opacity-0 inset-0 cursor-pointer" onchange="onScheduleDatePick(this.value)">
             </label>
-            <button id="vaccine-add-btn" onclick="showAddVaccineModal()" class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors hidden">+ 自定义</button>
-            <button id="health-add-btn" onclick="showAddHealthModal()" class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors hidden">+ 自定义</button>
-            <button id="countdown-add-btn" onclick="showCountdownModal()" class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors hidden">+ 倒数日</button>
+            <button type="button" id="vaccine-add-btn" data-growth-action="vaccine" onclick="showAddVaccineModal()" class="growth-action text-xs rounded border border-accent/30 text-accent hover:bg-accent/10" aria-hidden="true">+ 自定义</button>
+            <button type="button" id="health-add-btn" data-growth-action="health" onclick="showAddHealthModal()" class="growth-action text-xs rounded border border-accent/30 text-accent hover:bg-accent/10" aria-hidden="true">+ 自定义</button>
+            <button type="button" id="countdown-add-btn" data-growth-action="countdown" onclick="showCountdownModal()" class="growth-action text-xs rounded border border-accent/30 text-accent hover:bg-accent/10" aria-hidden="true">+ 倒数日</button>
         </div>
     </div>
 
     <!-- Tab 切换 -->
-    <div class="card p-1.5 flex gap-1 max-w-md mx-auto">
-        <button data-tab-btn="schedule" onclick="switchTab('schedule')" class="tab-pill active flex-1 text-center text-xs py-2 px-2 rounded-lg whitespace-nowrap">全部日程</button>
-        <button data-tab-btn="vaccine" onclick="switchTab('vaccine')" class="tab-pill flex-1 text-center text-xs py-2 px-2 rounded-lg whitespace-nowrap">疫苗规划</button>
-        <button data-tab-btn="health" onclick="switchTab('health')" class="tab-pill flex-1 text-center text-xs py-2 px-2 rounded-lg whitespace-nowrap">健康随访</button>
-        <button data-tab-btn="countdown" onclick="switchTab('countdown')" class="tab-pill flex-1 text-center text-xs py-2 px-2 rounded-lg whitespace-nowrap">倒数日</button>
+    <div id="growth-tabs" class="growth-tabs card max-w-md mx-auto" role="tablist" aria-label="成长分类">
+        <span id="growth-tab-indicator" class="growth-tab-indicator" aria-hidden="true"></span>
+        <button id="growth-tab-schedule" type="button" role="tab" data-tab-btn="schedule" aria-selected="true" aria-controls="tab-schedule" tabindex="0" onclick="switchTab('schedule')" class="tab-pill active growth-tab">全部日程</button>
+        <button id="growth-tab-vaccine" type="button" role="tab" data-tab-btn="vaccine" aria-selected="false" aria-controls="tab-vaccine" tabindex="-1" onclick="switchTab('vaccine')" class="tab-pill growth-tab">疫苗规划</button>
+        <button id="growth-tab-health" type="button" role="tab" data-tab-btn="health" aria-selected="false" aria-controls="tab-health" tabindex="-1" onclick="switchTab('health')" class="tab-pill growth-tab">健康随访</button>
+        <button id="growth-tab-countdown" type="button" role="tab" data-tab-btn="countdown" aria-selected="false" aria-controls="tab-countdown" tabindex="-1" onclick="switchTab('countdown')" class="tab-pill growth-tab">倒数日</button>
     </div>
 
+    <div id="growth-tab-stage" class="growth-tab-stage">
     <!-- 全部日程 Tab -->
-    <div id="tab-schedule" class="space-y-5">
+    <div id="tab-schedule" class="growth-tab-panel space-y-5" role="tabpanel" aria-labelledby="growth-tab-schedule" aria-hidden="false">
         <!-- 历史日历 -->
         <div>
             <div class="card">
@@ -75,42 +78,65 @@
         <div class="text-center text-xs text-text-muted font-mono" id="date-diff-label"></div>
 
         <!-- 记录列表 -->
-        <div id="records-list" class="space-y-2">
-            <div class="card text-center text-text-muted text-sm py-8">选择日期查看记录</div>
+        <div class="card growth-section">
+            <div class="growth-section-header">
+                <i data-lucide="clipboard-list" class="w-4 h-4 text-accent"></i>
+                <h2 class="growth-section-title">当日记录</h2>
+            </div>
+            <div id="records-list" class="growth-list">
+                <div class="growth-empty">选择日期查看记录</div>
+            </div>
         </div>
     </div>
 
     <!-- 疫苗规划 Tab -->
-    <div id="tab-vaccine" class="space-y-5 hidden">
+    <div id="tab-vaccine" class="growth-tab-panel space-y-5 hidden" role="tabpanel" aria-labelledby="growth-tab-vaccine" aria-hidden="true">
         <!-- 概览 -->
-        <div id="vaccine-overview" class="space-y-3"></div>
+        <div id="vaccine-overview" class="growth-overview"></div>
 
         <!-- 疫苗计划列表 -->
-        <div class="card">
-            <div class="flex items-center gap-2 mb-3">
+        <div class="card growth-section">
+            <div class="growth-section-header">
                 <i data-lucide="list-checks" class="w-4 h-4 text-accent"></i>
-                <h2 class="text-sm font-medium text-text-secondary">接种计划</h2>
-                <span class="text-[10px] text-text-muted">(2024年版)</span>
+                <h2 class="growth-section-title">接种计划</h2>
+                <span class="growth-section-meta">{{ schedule_version }}</span>
             </div>
-            <div id="vaccine-list" class="space-y-2"></div>
+            <div id="vaccine-list" class="growth-list"></div>
         </div>
     </div>
 
     <!-- 健康随访 Tab -->
-    <div id="tab-health" class="space-y-5 hidden">
-        <div id="health-overview" class="space-y-3"></div>
-        <div class="card">
-            <div class="flex items-center gap-2 mb-3">
+    <div id="tab-health" class="growth-tab-panel space-y-5 hidden" role="tabpanel" aria-labelledby="growth-tab-health" aria-hidden="true">
+        <div id="health-overview" class="growth-overview"></div>
+        <div class="card growth-section">
+            <div class="growth-section-header">
                 <i data-lucide="stethoscope" class="w-4 h-4 text-accent"></i>
-                <h2 class="text-sm font-medium text-text-secondary">随访计划</h2>
+                <h2 class="growth-section-title">随访计划</h2>
             </div>
-            <div id="health-list" class="space-y-2"></div>
+            <div id="health-list" class="growth-list"></div>
         </div>
     </div>
 
     <!-- 倒数日 Tab -->
-    <div id="tab-countdown" class="space-y-5 hidden">
-        <div id="countdown-list" class="space-y-2"></div>
+    <div id="tab-countdown" class="growth-tab-panel space-y-5 hidden" role="tabpanel" aria-labelledby="growth-tab-countdown" aria-hidden="true">
+        <div class="card growth-section">
+            <div class="growth-section-header">
+                <i data-lucide="calendar-heart" class="w-4 h-4 text-accent"></i>
+                <h2 class="growth-section-title">倒数日</h2>
+                <span id="countdown-count" class="growth-section-meta"></span>
+            </div>
+            <div id="countdown-list" class="growth-list" aria-live="polite" aria-busy="true">
+                <div class="growth-row growth-loading-row" role="status">
+                    <span class="growth-skeleton growth-skeleton-icon"></span>
+                    <span class="growth-skeleton-copy">
+                        <span class="growth-skeleton growth-skeleton-line w-2/5"></span>
+                        <span class="growth-skeleton growth-skeleton-line w-3/5"></span>
+                    </span>
+                </div>
+                <span class="sr-only">正在加载倒数日</span>
+            </div>
+        </div>
+    </div>
     </div>
 </div>
 

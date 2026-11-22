@@ -1,25 +1,4 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-
-# Virtual environments
-venv/
-env/
-.venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Environment variables / secrets
-.env
-.env.*
-!.env.example
-instance/
-
-# SQLite database (runtime user data)
+# Runtime data and secrets
 data/
 *.db
 *.db-journal
@@ -27,33 +6,39 @@ data/
 *.sqlite3
 *.wal
 *.shm
+.env
+.env.*
+!.env.example
+instance/
 
-# IDE
+# Go build and test output
+.build/
+bin/
+dist/
+baby-tracker
+coverage.out
+*.test
+
+# JavaScript dependencies
+node_modules/
+
+# IDE and operating system files
 .trae/
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# Docker compose
-docker-compose.yml
-docker-compose.yaml
-docker-compose.*.yml
-docker-compose.*.yaml
-
-# OS
 .DS_Store
 Thumbs.db
 desktop.ini
 ehthumbs.db
 
+# Local deployment overrides
+docker-compose.yml
+docker-compose.yaml
+docker-compose.*.yml
+docker-compose.*.yaml
+
 # Logs
 *.log
 logs/
-
-# Test / coverage
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.mypy_cache/

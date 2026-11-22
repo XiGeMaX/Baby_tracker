@@ -12,150 +12,321 @@
         </a>
     </div>
 
+    {% if current_user and current_user.role == 'admin' %}
+    <div class="card admin-card" id="admin-settings-card">
+        <details class="admin-details">
+            <summary class="admin-details-header" aria-controls="admin-settings-panel">
+                <span class="admin-details-heading">
+                    <i data-lucide="shield-check" class="admin-details-leading-icon text-accent flex-shrink-0"></i>
+                    <span class="admin-details-copy">
+                        <span class="admin-details-title-row">
+                            <span class="admin-details-title">管理配置</span>
+                        </span>
+                        <span class="admin-details-description">管理员密码与 MCP 接入</span>
+                    </span>
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-text-muted flex-shrink-0 admin-details-icon"></i>
+            </summary>
+            <div id="admin-settings-panel" class="admin-details-panel">
+                <div class="admin-details-panel-inner admin-details-content space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <p class="text-xs text-text-muted">管理员账号：<span class="font-mono text-text-secondary">{{ current_user.username }}</span></p>
+                        <button class="btn-secondary text-xs px-3 py-1.5" data-change-admin-pw data-admin-id="{{ current_user.id }}" data-admin-name="{{ current_user.username }}">
+                            修改管理密码
+                        </button>
+                    </div>
+                    <div id="mcp-settings-section" class="admin-settings-section border-t border-border pt-4">
+                        <div class="mcp-settings-header">
+                            <div class="mcp-settings-copy">
+                                <div class="mcp-settings-title-row">
+                                    <p class="text-xs text-text-secondary">MCP 服务</p>
+                                    <span id="mcp-service-state" class="admin-status-pill">未启用</span>
+                                </div>
+                                <p id="mcp-service-status" class="text-[11px] text-text-muted mt-0.5">默认关闭，可由管理员独立启用</p>
+                            </div>
+                            <button id="mcp-service-toggle" type="button" class="admin-switch" role="switch"
+                                    aria-checked="false" aria-controls="mcp-settings-details" aria-label="启用 MCP 服务"
+                                    data-toggle-mcp disabled>
+                                <i data-lucide="power" class="admin-switch-icon" aria-hidden="true"></i>
+                                <span class="admin-switch-thumb" aria-hidden="true"></span>
+                            </button>
+                        </div>
+                        <div id="mcp-settings-details" class="mcp-settings-details" aria-hidden="true" inert>
+                            <div class="mcp-settings-details-inner">
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-text-muted text-xs mb-1 block">MCP 端点</label>
+                                        <input type="text" id="mcp-endpoint" class="input-field font-mono text-xs" readonly placeholder="启用后生成">
+                                    </div>
+                                    <div>
+                                        <label class="text-text-muted text-xs mb-1 block">MCP API 密钥</label>
+                                        <div class="mcp-key-row">
+                                            <input type="text" id="mcp-api-key" class="input-field font-mono text-xs flex-1" readonly placeholder="点击右侧按钮生成">
+                                            <button class="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap" data-copy-mcp-key>复制</button>
+                                            <button class="btn-primary text-xs px-3 py-1.5 whitespace-nowrap" data-generate-mcp-key>生成</button>
+                                        </div>
+                                    </div>
+                                    <p class="text-[10px] text-text-muted">MCP 使用独立 API 密钥鉴权，重新生成后旧密钥立即失效。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </details>
+    </div>
+    {% endif %}
+
     <!-- 用户审批 -->
-    <div class="card space-y-4">
-        <div class="flex items-center gap-2 mb-1">
-            <i data-lucide="users" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary">用户管理</h2>
-            <span class="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30" id="pending-badge" style="display:none">待审批</span>
-        </div>
-        <div id="users-list" class="space-y-2">
-            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
-        </div>
+    <div class="card admin-card">
+        <details class="admin-details">
+            <summary class="admin-details-header" aria-controls="users-panel">
+                <span class="admin-details-heading">
+                    <i data-lucide="users" class="admin-details-leading-icon text-accent flex-shrink-0"></i>
+                    <span class="admin-details-copy">
+                        <span class="admin-details-title-row">
+                            <span class="admin-details-title">用户管理</span>
+                            <span class="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30" id="pending-badge" style="display:none">待审批</span>
+                        </span>
+                        <span class="admin-details-description">审批账号、修改登录名与重置密码</span>
+                    </span>
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-text-muted flex-shrink-0 admin-details-icon"></i>
+            </summary>
+            <div id="users-panel" class="admin-details-panel">
+                <div class="admin-details-panel-inner admin-details-content">
+                    <div id="users-list" class="space-y-2">
+                        <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+                    </div>
+                </div>
+            </div>
+        </details>
     </div>
 
     <!-- 快速记录按钮配置 -->
-    <div class="card space-y-4">
-        <div class="flex items-center justify-between mb-1">
-            <div class="flex items-center gap-2">
-                <i data-lucide="zap" class="w-4 h-4 text-accent"></i>
-                <h2 class="text-sm font-medium text-text-secondary">快速记录按钮</h2>
+    <div class="card admin-card">
+        <details class="admin-details">
+            <summary class="admin-details-header" aria-controls="quick-buttons-panel">
+                <span class="admin-details-heading">
+                    <i data-lucide="zap" class="admin-details-leading-icon text-accent flex-shrink-0"></i>
+                    <span class="admin-details-copy">
+                        <span class="admin-details-title-row">
+                            <span class="admin-details-title">快速记录按钮</span>
+                        </span>
+                        <span class="admin-details-description">配置首页可使用的快捷记录项</span>
+                    </span>
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-text-muted flex-shrink-0 admin-details-icon"></i>
+            </summary>
+            <div id="quick-buttons-panel" class="admin-details-panel">
+                <div class="admin-details-panel-inner admin-details-content">
+                    <div class="space-y-3">
+                        <div class="flex justify-end">
+                            <button class="btn-primary text-xs px-3 py-1.5" onclick="showAddButtonModal()">添加按钮</button>
+                        </div>
+                        <div id="buttons-list" class="space-y-2">
+                            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <button class="btn-primary text-xs px-3 py-1.5" onclick="showAddButtonModal()">添加按钮</button>
-        </div>
-        <div id="buttons-list" class="space-y-2">
-            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
-        </div>
+        </details>
     </div>
 
     <!-- 婴儿信息 -->
-    <div class="card space-y-4">
-        <div class="flex items-center gap-2 mb-1">
-            <i data-lucide="baby" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary">婴儿信息</h2>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">姓名</label>
-                <input type="text" id="baby-name" class="input-field" placeholder="宝宝姓名">
+    <div class="card admin-card">
+        <details class="admin-details">
+            <summary class="admin-details-header" aria-controls="baby-info-panel">
+                <span class="admin-details-heading">
+                    <i data-lucide="baby" class="admin-details-leading-icon text-accent flex-shrink-0"></i>
+                    <span class="admin-details-copy">
+                        <span class="admin-details-title-row">
+                            <span class="admin-details-title">婴儿信息</span>
+                        </span>
+                        <span class="admin-details-description">姓名、出生日期、体重与早产标记</span>
+                    </span>
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-text-muted flex-shrink-0 admin-details-icon"></i>
+            </summary>
+            <div id="baby-info-panel" class="admin-details-panel">
+                <div class="admin-details-panel-inner admin-details-content">
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-text-muted text-xs mb-1 block">姓名</label>
+                                <input type="text" id="baby-name" class="input-field" placeholder="宝宝姓名">
+                            </div>
+                            <div>
+                                <label class="text-text-muted text-xs mb-1 block">性别</label>
+                                <select id="baby-gender" class="input-field">
+                                    <option value="male">男</option>
+                                    <option value="female">女</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-text-muted text-xs mb-1 block">出生日期</label>
+                                <input type="date" id="baby-birth" class="input-field font-mono">
+                            </div>
+                            <div>
+                                <label class="text-text-muted text-xs mb-1 block">体重 (kg)</label>
+                                <input type="number" id="baby-weight" class="input-field font-mono" step="0.1" min="0.5" max="10" placeholder="3.0">
+                            </div>
+                            <div>
+                                <label class="text-text-muted text-xs mb-1 block">婴儿类型</label>
+                                <label class="flex items-center gap-2 cursor-pointer h-[38px]">
+                                    <input type="checkbox" id="baby-premature" class="w-4 h-4 rounded border-border bg-surface accent-teal-500">
+                                    <span class="text-sm text-text-secondary">高危早产儿（增加6次专属随访）</span>
+                                </label>
+                            </div>
+                        </div>
+                        <button class="btn-primary text-sm" onclick="saveBaby()">保存信息</button>
+                    </div>
+                </div>
             </div>
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">性别</label>
-                <select id="baby-gender" class="input-field">
-                    <option value="male">男</option>
-                    <option value="female">女</option>
-                </select>
-            </div>
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">出生日期</label>
-                <input type="date" id="baby-birth" class="input-field font-mono">
-            </div>
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">体重 (kg)</label>
-                <input type="number" id="baby-weight" class="input-field font-mono" step="0.1" min="0.5" max="10" placeholder="3.0">
-            </div>
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">婴儿类型</label>
-                <label class="flex items-center gap-2 cursor-pointer h-[38px]">
-                    <input type="checkbox" id="baby-premature" class="w-4 h-4 rounded border-border bg-surface accent-teal-500">
-                    <span class="text-sm text-text-secondary">高危早产儿（增加6次专属随访）</span>
-                </label>
-            </div>
-        </div>
-        <button class="btn-primary text-sm" onclick="saveBaby()">保存信息</button>
+        </details>
     </div>
 
     <!-- 奶量设置 -->
-    <div class="card space-y-4">
-        <div class="flex items-center gap-2 mb-1">
-            <i data-lucide="flask-round" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary">奶量设置</h2>
-        </div>
-        <div>
-            <label class="text-text-muted text-xs mb-1 block">每日目标奶量 (ml)</label>
-            <input type="number" id="custom-target" class="input-field font-mono" placeholder="如 800" min="100" max="2000">
-        </div>
-        <div>
-            <label class="text-text-muted text-xs mb-1 block">每日预估喂养次数</label>
-            <input type="number" id="feeds-per-day" class="input-field font-mono" min="4" max="16" value="8">
-        </div>
-        <button class="btn-primary text-sm" onclick="saveSettings()">保存设置</button>
+    <div class="card admin-card">
+        <details class="admin-details">
+            <summary class="admin-details-header" aria-controls="milk-settings-panel">
+                <span class="admin-details-heading">
+                    <i data-lucide="flask-round" class="admin-details-leading-icon text-accent flex-shrink-0"></i>
+                    <span class="admin-details-copy">
+                        <span class="admin-details-title-row">
+                            <span class="admin-details-title">奶量设置</span>
+                        </span>
+                        <span class="admin-details-description">每日目标与预估喂养次数</span>
+                    </span>
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-text-muted flex-shrink-0 admin-details-icon"></i>
+            </summary>
+            <div id="milk-settings-panel" class="admin-details-panel">
+                <div class="admin-details-panel-inner admin-details-content">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-text-muted text-xs mb-1 block">每日目标奶量 (ml)</label>
+                            <input type="number" id="custom-target" class="input-field font-mono" placeholder="如 800" min="100" max="2000">
+                        </div>
+                        <div>
+                            <label class="text-text-muted text-xs mb-1 block">每日预估喂养次数</label>
+                            <input type="number" id="feeds-per-day" class="input-field font-mono" min="4" max="16" value="8">
+                        </div>
+                        <button class="btn-primary text-sm" onclick="saveSettings()">保存设置</button>
+                    </div>
+                </div>
+            </div>
+        </details>
     </div>
 
     <!-- 数据管理 -->
-    <div class="card space-y-4">
-        <div class="flex items-center gap-2 mb-1">
-            <i data-lucide="database" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary">数据管理</h2>
-        </div>
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                <p class="counter-value text-lg text-text-primary" id="stat-records">0</p>
-                <p class="text-text-muted text-xs">总记录</p>
+    <div class="card admin-card">
+        <details class="admin-details">
+            <summary class="admin-details-header" aria-controls="data-management-panel">
+                <span class="admin-details-heading">
+                    <i data-lucide="database" class="admin-details-leading-icon text-accent flex-shrink-0"></i>
+                    <span class="admin-details-copy">
+                        <span class="admin-details-title-row">
+                            <span class="admin-details-title">数据管理</span>
+                        </span>
+                        <span class="admin-details-description">统计、导出、备份、恢复与清除</span>
+                    </span>
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-text-muted flex-shrink-0 admin-details-icon"></i>
+            </summary>
+            <div id="data-management-panel" class="admin-details-panel">
+                <div class="admin-details-panel-inner admin-details-content">
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                                <p class="counter-value text-lg text-text-primary" id="stat-records">0</p>
+                                <p class="text-text-muted text-xs">总记录</p>
+                            </div>
+                            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                                <p class="counter-value text-lg text-text-primary" id="stat-feeds">0</p>
+                                <p class="text-text-muted text-xs">喂养</p>
+                            </div>
+                            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                                <p class="counter-value text-lg text-text-primary" id="stat-ml">0</p>
+                                <p class="text-text-muted text-xs">总奶量</p>
+                            </div>
+                            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                                <p class="counter-value text-lg text-text-primary" id="stat-days">0</p>
+                                <p class="text-text-muted text-xs">天数</p>
+                            </div>
+                            <div class="bg-base rounded-lg p-3 border border-border text-center">
+                                <p class="counter-value text-lg text-amber-400" id="stat-pending">0</p>
+                                <p class="text-text-muted text-xs">待审批</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 flex-wrap">
+                            <button class="btn-secondary text-sm flex items-center gap-2" onclick="exportCSV()">
+                                <i data-lucide="download" class="w-4 h-4"></i> 导出 CSV
+                            </button>
+                            <button class="btn-secondary text-sm flex items-center gap-2" onclick="backupExport()">
+                                <i data-lucide="hard-drive-download" class="w-4 h-4"></i> 备份数据
+                            </button>
+                            <button class="btn-secondary text-sm flex items-center gap-2" onclick="showRestoreModal()">
+                                <i data-lucide="hard-drive-upload" class="w-4 h-4"></i> 恢复备份
+                            </button>
+                            <button class="btn-danger text-sm flex items-center gap-2" onclick="clearData()">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i> 清除记录
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                <p class="counter-value text-lg text-text-primary" id="stat-feeds">0</p>
-                <p class="text-text-muted text-xs">喂养</p>
-            </div>
-            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                <p class="counter-value text-lg text-text-primary" id="stat-ml">0</p>
-                <p class="text-text-muted text-xs">总奶量</p>
-            </div>
-            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                <p class="counter-value text-lg text-text-primary" id="stat-days">0</p>
-                <p class="text-text-muted text-xs">天数</p>
-            </div>
-            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                <p class="counter-value text-lg text-amber-400" id="stat-pending">0</p>
-                <p class="text-text-muted text-xs">待审批</p>
-            </div>
-        </div>
-        <div class="flex gap-3 flex-wrap">
-            <button class="btn-secondary text-sm flex items-center gap-2" onclick="exportCSV()">
-                <i data-lucide="download" class="w-4 h-4"></i> 导出 CSV
-            </button>
-            <button class="btn-secondary text-sm flex items-center gap-2" onclick="backupExport()">
-                <i data-lucide="hard-drive-download" class="w-4 h-4"></i> 备份数据
-            </button>
-            <button class="btn-secondary text-sm flex items-center gap-2" onclick="showRestoreModal()">
-                <i data-lucide="hard-drive-upload" class="w-4 h-4"></i> 恢复备份
-            </button>
-            <button class="btn-danger text-sm flex items-center gap-2" onclick="clearData()">
-                <i data-lucide="trash-2" class="w-4 h-4"></i> 清除记录
-            </button>
-        </div>
+        </details>
     </div>
 
     <!-- 操作日志 -->
-    <div class="card space-y-4">
-        <div class="flex items-center justify-between mb-1">
-            <div class="flex items-center gap-2">
-                <i data-lucide="scroll-text" class="w-4 h-4 text-accent"></i>
-                <h2 class="text-sm font-medium text-text-secondary">操作日志</h2>
+    <div class="card admin-card">
+        <details class="admin-details">
+            <summary class="admin-details-header" aria-controls="audit-logs-panel">
+                <span class="admin-details-heading">
+                    <i data-lucide="scroll-text" class="admin-details-leading-icon text-accent flex-shrink-0"></i>
+                    <span class="admin-details-copy">
+                        <span class="admin-details-title-row">
+                            <span class="admin-details-title">操作日志</span>
+                        </span>
+                        <span class="admin-details-description">最近 100 条管理与记录操作</span>
+                    </span>
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-text-muted flex-shrink-0 admin-details-icon"></i>
+            </summary>
+            <div id="audit-logs-panel" class="admin-details-panel">
+                <div class="admin-details-panel-inner admin-details-content">
+                    <div class="space-y-3">
+                        <div class="flex justify-end">
+                            <button class="text-xs text-text-muted hover:text-accent transition-colors" onclick="loadLogs()">刷新</button>
+                        </div>
+                        <div id="audit-logs" class="space-y-1 max-h-96 overflow-y-auto">
+                            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <button class="text-xs text-text-muted hover:text-accent transition-colors" onclick="loadLogs()">刷新</button>
-        </div>
-        <div id="audit-logs" class="space-y-1 max-h-96 overflow-y-auto">
-            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
-        </div>
+        </details>
     </div>
 
     <!-- HA 接口配置向导 -->
-    <div class="card space-y-4">
-        <div class="flex items-center gap-2 mb-1">
-            <i data-lucide="home" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary">Home Assistant 集成</h2>
-        </div>
+    <div class="card admin-card">
+        <details class="admin-details">
+            <summary class="admin-details-header" aria-controls="home-assistant-panel">
+                <span class="admin-details-heading">
+                    <i data-lucide="home" class="admin-details-leading-icon text-accent flex-shrink-0"></i>
+                    <span class="admin-details-copy">
+                        <span class="admin-details-title-row">
+                            <span class="admin-details-title">Home Assistant 集成</span>
+                        </span>
+                        <span class="admin-details-description">配置 API 密钥、服务地址、实体与 YAML</span>
+                    </span>
+                </span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-text-muted flex-shrink-0 admin-details-icon"></i>
+            </summary>
+            <div id="home-assistant-panel" class="admin-details-panel">
+                <div class="admin-details-panel-inner admin-details-content">
+                    <div class="space-y-4">
 
         <!-- 步骤1: 生成密钥 -->
         <div class="bg-base rounded-lg p-3 border border-border space-y-2">
@@ -246,6 +417,10 @@
             </div>
             <p class="text-[10px] text-text-muted">将生成的 YAML 粘贴到 HA 的 configuration.yaml 中，重启 HA 或调用 reload 即可生效</p>
         </div>
+                    </div>
+                </div>
+            </div>
+        </details>
     </div>
 </div>
 

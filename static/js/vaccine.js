@@ -1,5 +1,14 @@
 // ── Vaccine Page ─────────────────────────────────────────
 let vaccineData = null;
+const GROWTH_TABS = ['schedule', 'vaccine', 'health', 'countdown'];
+const GROWTH_TAB_TRANSITION_MS = 280;
+let _currentTab = 'schedule';
+let _healthLoaded = false;
+let _countdownLoaded = false;
+let _scheduleLoaded = false;
+let _growthTabsReady = false;
+let _growthTabAnimations = [];
+let _growthTabSwitchToken = 0;
 
 function initVaccine() {
     // 重置 Tab 状态及事件委托标志，保证 SPA 重新进入时可重入
@@ -8,40 +17,218 @@ function initVaccine() {
     _countdownLoaded = false;
     _vaccineDelegateBound = false;
     _scheduleLoaded = false;
-    switchTab('schedule');
+    _growthTabsReady = false;
+    _growthTabAnimations = [];
+    bindGrowthTabNavigation();
+    switchTab('schedule', { immediate: true });
     loadVaccine();
+    loadHealth();
 }
 
 document.addEventListener('DOMContentLoaded', initVaccine);
 
 // ── Tab 切换 ─────────────────────────────────────────────
-let _currentTab = 'schedule';
-let _healthLoaded = false;
-let _countdownLoaded = false;
-let _scheduleLoaded = false;
+function switchTab(tab, options = {}) {
+    if (!GROWTH_TABS.includes(tab)) return;
+    const previousTab = _currentTab;
+    const animate = !options.immediate && _growthTabsReady && previousTab !== tab;
 
-function switchTab(tab) {
     _currentTab = tab;
-    document.querySelectorAll('[data-tab-btn]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tabBtn === tab);
-    });
-    ['schedule', 'vaccine', 'health', 'countdown'].forEach(t => {
-        const el = document.getElementById('tab-' + t);
-        if (el) el.classList.toggle('hidden', tab !== t);
-    });
-    // 头部按钮按 Tab 控制
-    const addBtn = document.getElementById('vaccine-add-btn');
-    const healthBtn = document.getElementById('health-add-btn');
-    const countdownBtn = document.getElementById('countdown-add-btn');
-    const datePicker = document.getElementById('date-picker-wrap');
-    if (addBtn) addBtn.classList.toggle('hidden', tab !== 'vaccine');
-    if (healthBtn) healthBtn.classList.toggle('hidden', tab !== 'health');
-    if (countdownBtn) countdownBtn.classList.toggle('hidden', tab !== 'countdown');
-    if (datePicker) datePicker.classList.toggle('hidden', tab !== 'schedule');
-    // 按需懒加载
+    updateGrowthTabChrome(tab, animate);
+
+    if (!animate || window.MotionFX?.reducedMotion.matches) {
+        showGrowthTabInstant(tab);
+    } else {
+        animateGrowthTabPanels(previousTab, tab);
+    }
+    _growthTabsReady = true;
+
+    // 各页签只负责补齐自己的数据；首次进入前会预加载，避免切换时内容突然撑开。
     if (tab === 'schedule' && !_scheduleLoaded) initCalendar();
     if (tab === 'health' && !_healthLoaded) loadHealth();
     if (tab === 'countdown' && !_countdownLoaded) loadCountdown();
+}
+
+function updateGrowthTabChrome(tab, animateIndicator) {
+    document.querySelectorAll('[data-tab-btn]').forEach(btn => {
+        const active = btn.dataset.tabBtn === tab;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', String(active));
+        btn.tabIndex = active ? 0 : -1;
+    });
+
+    document.querySelectorAll('[data-growth-action]').forEach(action => {
+        const active = action.dataset.growthAction === tab;
+        action.classList.toggle('is-active', active);
+        action.setAttribute('aria-hidden', String(!active));
+        action.toggleAttribute('inert', !active);
+    });
+
+    positionGrowthTabIndicator(animateIndicator);
+}
+
+function positionGrowthTabIndicator(animate = false) {
+    const tabs = document.getElementById('growth-tabs');
+    const indicator = document.getElementById('growth-tab-indicator');
+    const active = tabs?.querySelector('[data-tab-btn].active');
+    if (!tabs || !indicator || !active) return;
+
+    const tabsRect = tabs.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    const x = activeRect.left - tabsRect.left - tabs.clientLeft;
+    const y = activeRect.top - tabsRect.top - tabs.clientTop;
+    const reduced = window.MotionFX?.reducedMotion.matches;
+
+    if (!animate || reduced) indicator.style.transition = 'none';
+    indicator.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    indicator.style.width = `${activeRect.width}px`;
+    indicator.style.height = `${activeRect.height}px`;
+
+    if (!animate || reduced) {
+        void indicator.offsetWidth;
+        indicator.style.transition = '';
+    }
+}
+
+function cancelGrowthTabAnimations() {
+    _growthTabAnimations.forEach(animation => animation.cancel());
+    _growthTabAnimations = [];
+}
+
+function showGrowthTabInstant(tab) {
+    _growthTabSwitchToken++;
+    cancelGrowthTabAnimations();
+    const stage = document.getElementById('growth-tab-stage');
+
+    GROWTH_TABS.forEach(name => {
+        const panel = document.getElementById('tab-' + name);
+        if (!panel) return;
+        const active = name === tab;
+        panel.classList.toggle('hidden', !active);
+        panel.classList.remove('is-tab-overlay');
+        panel.setAttribute('aria-hidden', String(!active));
+        panel.toggleAttribute('inert', !active);
+    });
+
+    if (stage) {
+        stage.classList.remove('is-transitioning');
+        stage.style.height = '';
+    }
+}
+
+function animateGrowthTabPanels(previousTab, nextTab) {
+    const stage = document.getElementById('growth-tab-stage');
+    const previous = document.getElementById('tab-' + previousTab);
+    const next = document.getElementById('tab-' + nextTab);
+    if (!stage || !previous || !next) {
+        showGrowthTabInstant(nextTab);
+        return;
+    }
+
+    const token = ++_growthTabSwitchToken;
+    const fromHeight = stage.getBoundingClientRect().height;
+    const previousStyle = getComputedStyle(previous);
+    const previousOpacity = previousStyle.opacity;
+    const previousTransform = previousStyle.transform === 'none'
+        ? 'translate3d(0, 0, 0)'
+        : previousStyle.transform;
+
+    cancelGrowthTabAnimations();
+    GROWTH_TABS.forEach(name => {
+        const panel = document.getElementById('tab-' + name);
+        if (!panel) return;
+        panel.classList.remove('is-tab-overlay');
+        if (name === previousTab) return;
+        panel.classList.add('hidden');
+        panel.setAttribute('aria-hidden', 'true');
+        panel.setAttribute('inert', '');
+    });
+
+    previous.classList.remove('hidden');
+    previous.setAttribute('aria-hidden', 'true');
+    previous.setAttribute('inert', '');
+    next.classList.remove('hidden');
+    next.classList.add('is-tab-overlay');
+    next.setAttribute('aria-hidden', 'false');
+    next.removeAttribute('inert');
+
+    stage.classList.add('is-transitioning');
+    stage.style.height = `${fromHeight}px`;
+    void stage.offsetHeight;
+
+    const toHeight = next.getBoundingClientRect().height;
+    const panelDuration = GROWTH_TAB_TRANSITION_MS - 20;
+    const heightDuration = GROWTH_TAB_TRANSITION_MS + 20;
+    const easing = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+    const previousAnimation = previous.animate([
+        { opacity: previousOpacity, transform: previousTransform },
+        { opacity: 0, transform: 'translate3d(0, -5px, 0)' },
+    ], {
+        duration: 180,
+        easing: 'cubic-bezier(0.4, 0, 1, 1)',
+        fill: 'forwards',
+    });
+    const nextAnimation = next.animate([
+        { opacity: 0, transform: 'translate3d(0, 7px, 0)' },
+        { opacity: 1, transform: 'translate3d(0, 0, 0)' },
+    ], {
+        duration: panelDuration,
+        easing,
+        fill: 'forwards',
+    });
+    const heightAnimation = stage.animate([
+        { height: `${fromHeight}px` },
+        { height: `${toHeight}px` },
+    ], {
+        duration: heightDuration,
+        easing,
+        fill: 'forwards',
+    });
+    _growthTabAnimations = [previousAnimation, nextAnimation, heightAnimation];
+
+    Promise.allSettled([
+        previousAnimation.finished,
+        nextAnimation.finished,
+        heightAnimation.finished,
+    ]).then(() => {
+        if (token !== _growthTabSwitchToken) return;
+        previous.classList.add('hidden');
+        previous.classList.remove('is-tab-overlay');
+        next.classList.remove('is-tab-overlay');
+        cancelGrowthTabAnimations();
+        stage.classList.remove('is-transitioning');
+        stage.style.height = '';
+    });
+}
+
+function bindGrowthTabNavigation() {
+    const tabs = document.getElementById('growth-tabs');
+    if (tabs && tabs.dataset.keyboardBound !== 'true') {
+        tabs.dataset.keyboardBound = 'true';
+        tabs.addEventListener('keydown', event => {
+            const buttons = [...tabs.querySelectorAll('[data-tab-btn]')];
+            const currentIndex = buttons.indexOf(document.activeElement);
+            if (currentIndex < 0) return;
+
+            let nextIndex = currentIndex;
+            if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % buttons.length;
+            else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+            else if (event.key === 'Home') nextIndex = 0;
+            else if (event.key === 'End') nextIndex = buttons.length - 1;
+            else return;
+
+            event.preventDefault();
+            buttons[nextIndex].focus();
+            switchTab(buttons[nextIndex].dataset.tabBtn);
+        });
+    }
+
+    if (!window.__growthTabResizeBound) {
+        window.__growthTabResizeBound = true;
+        window.addEventListener('resize', () => positionGrowthTabIndicator(false), { passive: true });
+    }
+    document.fonts?.ready.then(() => positionGrowthTabIndicator(false));
 }
 
 async function loadVaccine() {
@@ -79,7 +266,7 @@ function renderOverview() {
 
     container.innerHTML = `
     <!-- 最近已接种 -->
-    <div class="card flex items-center gap-4">
+    <div class="card growth-summary-card flex items-center gap-4">
         <div class="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0">
             <i data-lucide="syringe" class="w-5 h-5 text-accent"></i>
         </div>
@@ -90,7 +277,7 @@ function renderOverview() {
         <span class="text-xs text-text-muted font-mono flex-shrink-0">${lastDone ? esc(lastDone.vaccinated_date) : ''}</span>
     </div>
     <!-- 下一次接种 -->
-    <div class="card flex items-center gap-4">
+    <div class="card growth-summary-card flex items-center gap-4">
         <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${nextUp && nextUp.status === 'overdue' ? 'bg-red-500/10' : 'bg-accent/10'}">
             <i data-lucide="calendar-clock" class="w-5 h-5 ${nextUp && nextUp.status === 'overdue' ? 'text-red-400' : 'text-accent'}"></i>
         </div>
@@ -101,7 +288,7 @@ function renderOverview() {
         ${nextUp ? `<span class="text-sm font-bold flex-shrink-0 ${nextUp.status === 'overdue' ? 'text-red-400' : 'text-accent'}">${nextUp.status === 'overdue' ? '逾期' + Math.abs(ov.next_days) + '天' : ov.next_days + '天后'}</span>` : ''}
     </div>
     <!-- 进度 -->
-    <div class="card">
+    <div class="card growth-summary-card">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-text-muted">接种进度</span>
             <span class="text-xs font-mono text-accent">${ov.done_count}/${ov.total_doses}</span>
@@ -121,7 +308,7 @@ function renderList() {
     const container = document.getElementById('vaccine-list');
     const schedule = vaccineData.schedule;
     if (!schedule || schedule.length === 0) {
-        container.innerHTML = '<p class="text-text-muted text-sm text-center py-4">暂无数据</p>';
+        container.innerHTML = '<div class="growth-empty">暂无接种计划</div>';
         return;
     }
 
@@ -147,13 +334,11 @@ function renderList() {
     let html = '';
     for (const [name, doses] of sortedEntries) {
         const allDone = doses.every(d => d.status === 'done');
-        const hasOverdue = doses.some(d => d.status === 'overdue');
         const isCustom = doses[0].is_custom;
-        const borderColor = allDone ? 'border-accent/20' : hasOverdue ? 'border-red-500/20' : 'border-border';
         const nextDose = doses.find(d => d.status !== 'done');
 
-        html += `<div class="border ${borderColor} rounded-lg p-3">
-            <div class="flex items-center justify-between mb-2">
+        html += `<div class="growth-row growth-vaccine-row">
+            <div class="flex items-center justify-between gap-3 mb-2">
                 <div class="flex items-center gap-2">
                     <span class="text-sm font-medium text-text-primary">${esc(name)}</span>
                     ${isCustom ? '<span class="text-[9px] text-amber-400 border border-amber-500/20 rounded px-1">自定义</span>' : `<span class="text-[10px] text-text-muted font-mono">${doses[0].short}</span>`}
@@ -483,19 +668,29 @@ async function saveCustomHealth() {
 // ── 健康随访 ─────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════
 let healthData = null;
+let _healthRequest = null;
 
 async function loadHealth() {
+    if (_healthRequest) return _healthRequest;
+    const request = (async () => {
+        try {
+            healthData = await api('/api/health/schedule');
+            renderHealthOverview();
+            renderHealthList();
+            _healthLoaded = true;
+        } catch (e) {
+            console.error('加载健康随访数据失败:', e);
+            const ov = document.getElementById('health-overview');
+            const list = document.getElementById('health-list');
+            if (ov) ov.innerHTML = `<div class="card"><p class="text-text-muted text-sm text-center">${esc(e.message || '加载失败')}</p></div>`;
+            if (list) list.innerHTML = '<div class="growth-empty">随访数据加载失败</div>';
+        }
+    })();
+    _healthRequest = request;
     try {
-        healthData = await api('/api/health/schedule');
-        renderHealthOverview();
-        renderHealthList();
-        _healthLoaded = true;
-    } catch (e) {
-        console.error('加载健康随访数据失败:', e);
-        const ov = document.getElementById('health-overview');
-        const list = document.getElementById('health-list');
-        if (ov) ov.innerHTML = `<div class="card"><p class="text-text-muted text-sm text-center">${esc(e.message || '加载失败')}</p></div>`;
-        if (list) list.innerHTML = '';
+        return await request;
+    } finally {
+        if (_healthRequest === request) _healthRequest = null;
     }
 }
 
@@ -530,7 +725,7 @@ function renderHealthOverview() {
 
     container.innerHTML = `
     <!-- 总览 -->
-    <div class="card flex items-center gap-4">
+    <div class="card growth-summary-card flex items-center gap-4">
         <div class="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0">
             <i data-lucide="activity" class="w-5 h-5 text-accent"></i>
         </div>
@@ -541,7 +736,7 @@ function renderHealthOverview() {
         ${ov.is_premature ? '<span class="text-[10px] text-amber-400 border border-amber-500/20 rounded px-1 flex-shrink-0">早产儿</span>' : ''}
     </div>
     <!-- 下一次随访 -->
-    <div class="card flex items-center gap-4">
+    <div class="card growth-summary-card flex items-center gap-4">
         <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${overdue ? 'bg-red-500/10' : 'bg-accent/10'}">
             <i data-lucide="calendar-clock" class="w-5 h-5 ${overdue ? 'text-red-400' : 'text-accent'}"></i>
         </div>
@@ -552,7 +747,7 @@ function renderHealthOverview() {
         ${nextLabel ? `<span class="text-sm font-bold flex-shrink-0 ${overdue ? 'text-red-400' : 'text-accent'}">${nextDaysText}</span>` : ''}
     </div>
     <!-- 进度 -->
-    <div class="card">
+    <div class="card growth-summary-card">
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-text-muted">随访进度</span>
             <span class="text-xs font-mono text-accent">${ov.done_count}/${ov.total}</span>
@@ -573,7 +768,7 @@ function renderHealthList() {
     if (!container) return;
     const schedule = healthData.schedule;
     if (!schedule || schedule.length === 0) {
-        container.innerHTML = '<p class="text-text-muted text-sm text-center py-4">暂无数据</p>';
+        container.innerHTML = '<div class="growth-empty">暂无随访计划</div>';
         return;
     }
 
@@ -582,10 +777,10 @@ function renderHealthList() {
         const isDone = item.status === 'done';
         const isOverdue = item.status === 'overdue';
         const cfg = isDone
-            ? { color: 'text-accent', border: 'border-accent/20', icon: 'check-circle' }
+            ? { color: 'text-accent', icon: 'check-circle' }
             : isOverdue
-                ? { color: 'text-red-400', border: 'border-red-500/20', icon: 'alert-circle' }
-                : { color: 'text-text-muted', border: 'border-border', icon: 'clock' };
+                ? { color: 'text-red-400', icon: 'alert-circle' }
+                : { color: 'text-text-muted', icon: 'clock' };
 
         let daysText = '';
         if (!isDone) {
@@ -598,7 +793,7 @@ function renderHealthList() {
         const secondary = [item.location, isDone ? (item.completed_date ? '完成于 ' + item.completed_date : '') : item.due_date]
             .filter(Boolean).map(esc).join(' · ');
 
-        html += `<div class="border ${cfg.border} rounded-lg p-3 cursor-pointer hover:opacity-80 transition-opacity" data-health-click data-label="${esc(item.label)}" data-status="${item.status}" data-due-date="${esc(item.due_date || '')}" data-completed-date="${esc(item.completed_date || '')}" data-note="${esc(item.note_text || '')}">
+        html += `<div class="growth-row growth-health-row" data-health-click data-label="${esc(item.label)}" data-status="${item.status}" data-due-date="${esc(item.due_date || '')}" data-completed-date="${esc(item.completed_date || '')}" data-note="${esc(item.note_text || '')}">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2 min-w-0">
                     <i data-lucide="${cfg.icon}" class="w-4 h-4 ${cfg.color} flex-shrink-0"></i>
@@ -731,26 +926,47 @@ async function deleteHealthFromRecord() {
 // ── 倒数日 ───────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════
 let countdownData = [];
+let _countdownRequest = null;
+
+async function fetchCountdownData() {
+    if (_countdownRequest) return _countdownRequest;
+    const request = api('/api/countdowns');
+    _countdownRequest = request;
+    try {
+        return await request;
+    } finally {
+        if (_countdownRequest === request) _countdownRequest = null;
+    }
+}
 
 async function loadCountdown() {
     try {
-        countdownData = await api('/api/countdowns');
+        countdownData = await fetchCountdownData();
         renderCountdownList();
         _countdownLoaded = true;
     } catch (e) {
         console.error('加载倒数日失败:', e);
         const container = document.getElementById('countdown-list');
-        if (container) container.innerHTML = `<div class="card"><p class="text-text-muted text-sm text-center">${esc(e.message || '加载失败')}</p></div>`;
+        const count = document.getElementById('countdown-count');
+        if (count) count.textContent = '';
+        if (container) {
+            container.setAttribute('aria-busy', 'false');
+            container.innerHTML = `<div class="growth-empty growth-empty-error">${esc(e.message || '倒数日加载失败')}</div>`;
+        }
     }
 }
 
 function renderCountdownList() {
     const container = document.getElementById('countdown-list');
     if (!container) return;
+    const count = document.getElementById('countdown-count');
+    container.setAttribute('aria-busy', 'false');
     if (!Array.isArray(countdownData) || countdownData.length === 0) {
-        container.innerHTML = '<p class="text-text-muted text-sm text-center py-4">暂无倒数日，点击右上角添加</p>';
+        if (count) count.textContent = '';
+        container.innerHTML = '<div class="growth-empty">暂无倒数日，点击右上角添加</div>';
         return;
     }
+    if (count) count.textContent = `${countdownData.length} 个`;
 
     let html = '';
     countdownData.forEach(item => {
@@ -765,7 +981,7 @@ function renderCountdownList() {
             daysText = '已过' + Math.abs(item.days_left) + '天';
             daysColor = 'text-text-muted';
         }
-        html += `<div class="card flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity" data-countdown-click data-id="${item.id}">
+        html += `<div class="growth-row growth-countdown-row flex items-center gap-4" data-countdown-click data-id="${item.id}">
             <div class="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center flex-shrink-0">
                 <i data-lucide="calendar-heart" class="w-5 h-5 text-accent"></i>
             </div>
@@ -912,7 +1128,10 @@ async function loadHealthDates() {
 
 async function loadCountdownDates() {
     try {
-        const list = await api('/api/countdowns');
+        const list = await fetchCountdownData();
+        countdownData = list;
+        _countdownLoaded = true;
+        renderCountdownList();
         countdownDates.clear();
         list.forEach(c => {
             if (!countdownDates.has(c.target_date)) {
@@ -1060,7 +1279,7 @@ async function loadRecords(dateStr) {
             : [];
         renderRecords(records, vaccineData, healthData, countdownList, dateStr);
     } catch (e) {
-        container.innerHTML = `<div class="card text-center text-red-400 text-sm py-8">加载失败</div>`;
+        container.innerHTML = '<div class="growth-empty growth-empty-error">记录加载失败</div>';
     }
 }
 
@@ -1096,7 +1315,7 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
             if (r.note) detail += ` · ${r.note}`;
 
             items.push(`
-            <div class="card flex items-center gap-3 py-3 px-4 fade-in">
+            <div class="growth-row growth-record-row flex items-center gap-3">
                 <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${bgMap[r.type] || bgMap.symptom}">
                     <i data-lucide="${iconMap[r.type] || iconMap.symptom}" class="w-4 h-4 ${colorMap[r.type] || colorMap.symptom}"></i>
                 </div>
@@ -1124,7 +1343,7 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
         if (vaccineData.vaccinated && vaccineData.vaccinated.length > 0) {
             vaccineData.vaccinated.forEach(v => {
                 items.push(`
-                <div class="card flex items-center gap-3 py-3 px-4 fade-in">
+                <div class="growth-row growth-record-row flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-yellow-500/10">
                         <i data-lucide="syringe" class="w-4 h-4 text-yellow-500"></i>
                     </div>
@@ -1143,7 +1362,7 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
             vaccineData.planned.forEach(v => {
                 const isOverdue = v.status === 'overdue';
                 items.push(`
-                <div class="card flex items-center gap-3 py-3 px-4 fade-in">
+                <div class="growth-row growth-record-row flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-gray-500/10' : 'bg-red-500/10'}">
                         <i data-lucide="clock" class="w-4 h-4 ${isOverdue ? 'text-gray-400' : 'text-red-400'}"></i>
                     </div>
@@ -1164,7 +1383,7 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
         if (healthData.completed && healthData.completed.length > 0) {
             healthData.completed.forEach(h => {
                 items.push(`
-                <div class="card flex items-center gap-3 py-3 px-4 fade-in">
+                <div class="growth-row growth-record-row flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-teal-500/10">
                         <i data-lucide="stethoscope" class="w-4 h-4 text-teal-400"></i>
                     </div>
@@ -1183,7 +1402,7 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
             healthData.planned.forEach(h => {
                 const isOverdue = h.status === 'overdue';
                 items.push(`
-                <div class="card flex items-center gap-3 py-3 px-4 fade-in">
+                <div class="growth-row growth-record-row flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-gray-500/10' : 'bg-teal-500/10'}">
                         <i data-lucide="calendar-clock" class="w-4 h-4 ${isOverdue ? 'text-gray-400' : 'text-teal-400'}"></i>
                     </div>
@@ -1218,7 +1437,7 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
                 statusColor = 'text-text-muted';
             }
             items.push(`
-            <div class="card flex items-center gap-3 py-3 px-4 fade-in">
+            <div class="growth-row growth-record-row flex items-center gap-3">
                 <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-pink-500/10">
                     <i data-lucide="calendar-heart" class="w-4 h-4 text-pink-400"></i>
                 </div>
@@ -1236,9 +1455,7 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
 
     if (items.length === 0) {
         container.innerHTML = `
-            <div class="card text-center text-text-muted text-sm py-8">
-                <p>${dateStr} 暂无记录</p>
-            </div>`;
+            <div class="growth-empty">${dateStr} 暂无记录</div>`;
         return;
     }
 

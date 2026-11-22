@@ -8,10 +8,10 @@
         <h1 class="text-xl font-semibold">趋势</h1>
         <div class="flex-1"></div>
         <!-- 模式选择器：日/月/时 -->
-        <div class="card flex items-center gap-0.5 p-0.5">
-            <button class="tab-pill px-3 py-1 text-xs rounded-md active" data-mode="day" onclick="switchTrendMode('day')">日</button>
-            <button class="tab-pill px-3 py-1 text-xs rounded-md" data-mode="month" onclick="switchTrendMode('month')">月</button>
-            <button class="tab-pill px-3 py-1 text-xs rounded-md" data-mode="hour" onclick="switchTrendMode('hour')">时</button>
+        <div class="card trend-mode-switch flex items-center" role="group" aria-label="趋势时间粒度">
+            <button type="button" class="tab-pill trend-mode-btn active" data-mode="day" aria-pressed="true" onclick="switchTrendMode('day')">日</button>
+            <button type="button" class="tab-pill trend-mode-btn" data-mode="month" aria-pressed="false" onclick="switchTrendMode('month')">月</button>
+            <button type="button" class="tab-pill trend-mode-btn" data-mode="hour" aria-pressed="false" onclick="switchTrendMode('hour')">时</button>
         </div>
         <!-- 范围选择器（固定位置大小，内容随模式切换） -->
         <!-- 时模式日期选择器：放在外部，用 label for 触发（iOS兼容） -->
@@ -150,6 +150,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7" data-page-script="chart.js"></script>
+<script src="/static/vendor/chart.js-4.4.7.min.js" data-page-script="chart.js"></script>
 <script src="/static/js/trends.js" data-page-script></script>
 {% endblock %}

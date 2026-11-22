@@ -34,13 +34,31 @@ const SUB_TYPES = {
 let _adminEventsInit = false;
 
 function initAdmin() {
-    Promise.all([loadBaby(), loadSettings(), loadStats(), loadUsers(), loadButtons(), loadLogs(), loadHaApiKey()]);
+    Promise.all([
+        loadBaby(),
+        loadSettings(),
+        loadStats(),
+        loadUsers(),
+        loadButtons(),
+        loadLogs(),
+        loadHaApiKey(),
+        loadMcpConfig(),
+        loadMcpApiKey(),
+    ]);
     updateSubTypes();
     if (!_adminEventsInit) {
         _adminEventsInit = true;
         document.addEventListener('click', e => {
             const resetBtn = e.target.closest('[data-reset-pw]');
             if (resetBtn) showResetPasswordModal(parseInt(resetBtn.dataset.resetPw), resetBtn.dataset.resetName);
+            const toggleMcpBtn = e.target.closest('[data-toggle-mcp]');
+            if (toggleMcpBtn) toggleMcpService();
+            const copyMcpKeyBtn = e.target.closest('[data-copy-mcp-key]');
+            if (copyMcpKeyBtn) copyMcpApiKey();
+            const generateMcpKeyBtn = e.target.closest('[data-generate-mcp-key]');
+            if (generateMcpKeyBtn) generateMcpApiKey();
+            const ownerPwBtn = e.target.closest('[data-change-admin-pw]');
+            if (ownerPwBtn) showResetPasswordModal(parseInt(ownerPwBtn.dataset.adminId), ownerPwBtn.dataset.adminName);
             const renameBtn = e.target.closest('[data-rename-user]');
             if (renameBtn) showRenameUserModal(parseInt(renameBtn.dataset.renameUser), renameBtn.dataset.renameName);
         });
@@ -95,9 +113,9 @@ function renderUsers(users) {
         } else if (u.status === 'rejected') {
             actions = `<button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors" onclick="approveUser(${u.id})">重新批准</button>`;
         }
-        actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors" data-reset-pw="${u.id}" data-reset-name="${esc(u.nickname || u.username)}">改密</button>`;
-        actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-blue-400 hover:border-blue-500/30 transition-colors" data-rename-user="${u.id}" data-rename-name="${esc(u.username)}">改名</button>`;
         if (u.role !== 'admin') {
+            actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors" data-reset-pw="${u.id}" data-reset-name="${esc(u.nickname || u.username)}">改密</button>`;
+            actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-blue-400 hover:border-blue-500/30 transition-colors" data-rename-user="${u.id}" data-rename-name="${esc(u.username)}">改名</button>`;
             actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-red-400 hover:border-red-500/30 transition-colors" onclick="deleteUser(${u.id})">删除</button>`;
         }
 
@@ -543,12 +561,12 @@ function renderLogs(logs) {
 }
 
 function exportCSV() {
-    window.location.href = '/api/export/csv';
+    window.location.href = appUrl('/api/export/csv');
 }
 
 // ── Backup & Restore ─────────────────────────────────────
 function backupExport() {
-    window.location.href = '/api/backup/export';
+    window.location.href = appUrl('/api/backup/export');
 }
 
 function showRestoreModal() {
@@ -577,7 +595,7 @@ async function backupRestore() {
     formData.append('file', fileInput.files[0]);
 
     try {
-        const res = await fetch('/api/backup/restore', {
+        const res = await fetch(appUrl('/api/backup/restore'), {
             method: 'POST',
             body: formData,
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -625,8 +643,9 @@ function showResetPasswordModal(userId, userName) {
     }
     modal.innerHTML = `
     <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 class="text-sm font-medium text-text-secondary mb-3">重置密码 - ${esc(userName)}</h3>
-        <input type="password" id="reset-pw-input" class="input-field font-mono" placeholder="输入新密码（至少6位）" autocomplete="new-password">
+        <h3 class="text-sm font-medium text-text-secondary mb-3">修改管理密码 - ${esc(userName)}</h3>
+        <input type="password" id="reset-pw-input" class="input-field font-mono" placeholder="输入新密码（8-128位）" autocomplete="new-password">
+        <input type="password" id="reset-pw-confirm" class="input-field font-mono mt-2" placeholder="再次输入新密码" autocomplete="new-password">
         <div class="flex gap-2 mt-4">
             <button class="btn-secondary flex-1 text-sm" onclick="closeResetPasswordModal()">取消</button>
             <button class="btn-primary flex-1 text-sm" onclick="resetPassword()">确认</button>
@@ -649,8 +668,13 @@ function closeResetPasswordModal() {
 
 async function resetPassword() {
     const pw = document.getElementById('reset-pw-input').value;
-    if (pw.length < 6) {
-        showToast('密码至少6个字符');
+    const confirmation = document.getElementById('reset-pw-confirm').value;
+    if (pw.length < 8 || pw.length > 128) {
+        showToast('密码长度应为 8-128 位');
+        return;
+    }
+    if (pw !== confirmation) {
+        showToast('两次输入的密码不一致');
         return;
     }
     try {
@@ -768,7 +792,89 @@ function haToggleAllButtons() {
     checks.forEach(c => { c.checked = !allChecked; });
 }
 
+function updateMcpServiceStatus(config) {
+    const enabled = config?.mcp_enabled ?? config?.enabled ?? false;
+    const available = config?.mcp_available ?? config?.available ?? enabled;
+    const state = document.getElementById('mcp-service-state');
+    const status = document.getElementById('mcp-service-status');
+    const endpoint = document.getElementById('mcp-endpoint');
+    const toggle = document.getElementById('mcp-service-toggle');
+
+    if (state) {
+        state.textContent = available ? '已启用' : '未启用';
+        state.classList.toggle('is-enabled', available);
+        state.classList.remove('is-pending');
+        state.classList.toggle('is-disabled', !enabled);
+        state.dataset.state = available ? 'enabled' : 'disabled';
+    }
+    if (status) {
+        status.textContent = available
+            ? 'MCP 已启用，请使用独立 API 密钥访问'
+            : '默认关闭，可由管理员独立启用';
+    }
+    if (endpoint) {
+        endpoint.value = available ? new URL(appUrl('/mcp'), location.origin).toString() : '';
+        endpoint.placeholder = enabled ? '正在生成端点' : '启用后生成';
+    }
+    if (toggle) {
+        toggle.setAttribute('aria-checked', String(enabled));
+        toggle.setAttribute('aria-label', enabled ? '关闭 MCP 服务' : '启用 MCP 服务');
+        toggle.title = enabled ? '关闭 MCP 服务' : '启用 MCP 服务';
+        toggle.dataset.ready = 'true';
+        toggle.disabled = toggle.dataset.busy === 'true';
+    }
+    setMcpSettingsExpanded(enabled);
+}
+
+function setMcpSettingsExpanded(expanded) {
+    const details = document.getElementById('mcp-settings-details');
+    if (!details) return;
+    details.classList.toggle('is-open', expanded);
+    details.setAttribute('aria-hidden', String(!expanded));
+    details.inert = !expanded;
+}
+
+function setMcpSwitchBusy(busy) {
+    const toggle = document.getElementById('mcp-service-toggle');
+    if (!toggle) return;
+    toggle.dataset.busy = String(busy);
+    toggle.setAttribute('aria-busy', String(busy));
+    toggle.disabled = busy || toggle.dataset.ready !== 'true';
+}
+
+async function toggleMcpService() {
+    const toggle = document.getElementById('mcp-service-toggle');
+    if (!toggle || toggle.dataset.ready !== 'true' || toggle.dataset.busy === 'true') return;
+    const enabled = toggle.getAttribute('aria-checked') !== 'true';
+    setMcpSwitchBusy(true);
+    try {
+        const result = await api('/api/mcp/config', {
+            method: 'PUT',
+            body: JSON.stringify({ enabled }),
+        });
+        updateMcpServiceStatus({
+            mcp_enabled: result.enabled,
+            mcp_available: result.available,
+        });
+        showToast(result.message || (enabled ? 'MCP 服务已开启' : 'MCP 服务已关闭'));
+    } catch (e) {
+        showToast(e.message);
+    } finally {
+        setMcpSwitchBusy(false);
+    }
+}
+
+async function loadMcpConfig() {
+    try {
+        const config = await api('/api/mcp/config');
+        updateMcpServiceStatus(config);
+    } catch (e) {
+        console.warn('加载 MCP 配置失败', e);
+    }
+}
+
 async function generateHaApiKey() {
+
     if (!await showConfirm('生成新的 API 密钥？旧密钥将立即失效。', { confirmText: '生成' })) return;
     try {
         const data = await api('/api/ha/api-key', { method: 'POST' });
@@ -787,6 +893,37 @@ function copyHaApiKey() {
         return;
     }
     _copyText(el.value, '密钥已复制');
+}
+
+async function loadMcpApiKey() {
+    try {
+        const data = await api('/api/mcp/api-key');
+        const el = document.getElementById('mcp-api-key');
+        if (el) el.value = data.api_key || '';
+    } catch (e) {
+        console.warn('加载 MCP API 密钥失败', e);
+    }
+}
+
+async function generateMcpApiKey() {
+    if (!await showConfirm('生成新的 MCP API 密钥？旧密钥将立即失效。', { confirmText: '生成' })) return;
+    try {
+        const data = await api('/api/mcp/api-key', { method: 'POST' });
+        const el = document.getElementById('mcp-api-key');
+        if (el) el.value = data.api_key || '';
+        showToast('MCP API 密钥已生成');
+    } catch (e) {
+        showToast(e.message);
+    }
+}
+
+function copyMcpApiKey() {
+    const el = document.getElementById('mcp-api-key');
+    if (!el || !el.value) {
+        showToast('请先生成 MCP API 密钥');
+        return;
+    }
+    _copyText(el.value, 'MCP API 密钥已复制');
 }
 
 function generateHaYaml() {
@@ -818,7 +955,7 @@ function generateHaYaml() {
         const sensorConfigs = {
             'status': {
                 name: '宝宝今日奶量',
-                resource: '/api/ha/status',
+                resource: 'api/ha/status',
                 value_template: '{{ value_json.state }}',
                 unit: 'ml',
                 attributes_path: '$.attributes',
@@ -826,7 +963,7 @@ function generateHaYaml() {
             },
             'feed-today': {
                 name: '宝宝今日喂养',
-                resource: '/api/ha/feed-today',
+                resource: 'api/ha/feed-today',
                 value_template: '{{ value_json.state }}',
                 unit: '',
                 attributes_path: '$.attributes',
@@ -834,7 +971,7 @@ function generateHaYaml() {
             },
             'last-feed': {
                 name: '宝宝上次喂养',
-                resource: '/api/ha/last-feed',
+                resource: 'api/ha/last-feed',
                 value_template: '{{ value_json.state }}',
                 unit: '',
                 attributes_path: '$.attributes',
@@ -842,7 +979,7 @@ function generateHaYaml() {
             },
             'excrete-today': {
                 name: '宝宝今日排泄',
-                resource: '/api/ha/excrete-today',
+                resource: 'api/ha/excrete-today',
                 value_template: '{{ value_json.state }}',
                 unit: '',
                 attributes_path: '$.attributes',
@@ -855,7 +992,7 @@ function generateHaYaml() {
             if (!cfg) return;
             lines.push(`  - platform: rest`);
             lines.push(`    name: "${cfg.name}"`);
-            lines.push(`    resource: "${base}${cfg.resource}"`);
+            lines.push(`    resource: "${base}/${cfg.resource}"`);
             lines.push(`    value_template: "${cfg.value_template}"`);
             if (cfg.unit) lines.push(`    unit_of_measurement: "${cfg.unit}"`);
             if (cfg.attrs.length > 0) {
@@ -863,6 +1000,8 @@ function generateHaYaml() {
                 lines.push(`    json_attributes:`);
                 cfg.attrs.forEach(a => lines.push(`      - ${a}`));
             }
+            lines.push(`    headers:`);
+            lines.push(`      Authorization: "Bearer ${apiKey}"`);
             lines.push(`    scan_interval: 300`);
             lines.push('');
         });

@@ -53,7 +53,9 @@ function switchTrendMode(mode) {
 
 function updateModeUI() {
     document.querySelectorAll('[data-mode]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.mode === trendsMode);
+        const active = btn.dataset.mode === trendsMode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', String(active));
     });
     // 范围选择器：日/月模式显示 select，时模式显示 date label（位置固定不变）
     const daysSel = document.getElementById('trend-days');

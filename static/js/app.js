@@ -4,21 +4,61 @@ function getLocalDate() {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// ── Base-path-aware URL Helper ───────────────────────────
+function appBasePath() {
+    return (document.documentElement.dataset.appBase || '').replace(/\/+$/, '');
+}
+
+function appUrl(path) {
+    const value = String(path || '');
+    if (/^(?:[a-z]+:)?\/\//i.test(value) || value.startsWith('#') || value.startsWith('javascript:')) {
+        return value;
+    }
+    const normalized = value.startsWith('/') ? value : `/${value}`;
+    const base = appBasePath();
+    if (base && (normalized === base || normalized.startsWith(`${base}/`))) {
+        return normalized;
+    }
+    return `${base}${normalized}`;
+}
+
 // ── Toast ─────────────────────────────────────────────────
+let toastHideTimer = null;
+let toastShowFrame = null;
+
+function hideToast() {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.classList.remove('show');
+    toast.setAttribute('aria-hidden', 'true');
+    toastHideTimer = null;
+}
+
 function showToast(msg) {
     const toast = document.getElementById('toast');
     const toastMsg = document.getElementById('toast-msg');
+    if (!toast || !toastMsg) return;
+
+    clearTimeout(toastHideTimer);
     toastMsg.textContent = msg;
     toast.classList.remove('hidden');
-    toast.classList.add('show');
-    setTimeout(() => {
-        toast.classList.remove('show');
-        toast.classList.add('hidden');
-    }, 2500);
+    toast.setAttribute('aria-hidden', 'false');
+
+    if (!toast.classList.contains('show')) {
+        if (toastShowFrame) cancelAnimationFrame(toastShowFrame);
+        void toast.offsetWidth;
+        toastShowFrame = requestAnimationFrame(() => {
+            toastShowFrame = null;
+            toast.classList.add('show');
+        });
+    }
+
+    toastHideTimer = setTimeout(hideToast, 3600);
 }
 
 // ── API Helper ───────────────────────────────────────────
 async function api(url, options = {}) {
+    url = appUrl(url);
     // GET 请求加时间戳防缓存
     if (!options.method || options.method === 'GET') {
         const sep = url.includes('?') ? '&' : '?';

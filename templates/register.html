@@ -56,7 +56,7 @@ async function doRegister() {
             body: JSON.stringify({ username, password, nickname: nickname || username })
         });
         showToast('注册成功，请等待管理员审批');
-        setTimeout(() => window.location.href = '/login', 1500);
+        setTimeout(() => window.location.href = appUrl('/login'), 1500);
     } catch (e) {
         errEl.textContent = e.message;
         errEl.classList.remove('hidden');

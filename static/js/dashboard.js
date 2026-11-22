@@ -77,6 +77,10 @@ function renderQuickButtons(buttons) {
     const container = document.getElementById('quick-buttons');
     if (!container) return;
 
+    const signature = JSON.stringify(buttons.map(btn => [btn.id, btn.type, btn.label]));
+    if (container.dataset.buttonsSignature === signature) return;
+    container.dataset.buttonsSignature = signature;
+
     const typeIcons = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
     const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
     const typeBorders = { feed: 'border-blue-500/20', excrete: 'border-amber-500/20', symptom: 'border-red-500/20', supplement: 'border-purple-500/20' };
@@ -84,7 +88,7 @@ function renderQuickButtons(buttons) {
     let html = '';
     for (const btn of buttons) {
         html += `
-        <button class="quick-btn flex flex-col items-center gap-1 p-3 rounded-xl border ${typeBorders[btn.type]} bg-surface hover:bg-white/5 active:scale-95 transition-all duration-150 cursor-pointer"
+        <button type="button" class="quick-btn flex flex-col items-center gap-1 p-3 rounded-xl border ${typeBorders[btn.type]} bg-surface hover:bg-white/5 active:scale-95 transition-all duration-150 cursor-pointer"
                 data-btn-id="${btn.id}" data-btn-label="${esc(btn.label)}">
             <i data-lucide="${typeIcons[btn.type]}" class="w-5 h-5 ${typeColors[btn.type]}"></i>
             <span class="text-xs text-text-secondary">${esc(btn.label)}</span>
@@ -97,9 +101,10 @@ function renderQuickButtons(buttons) {
         container.addEventListener('click', e => {
             const btn = e.target.closest('.quick-btn');
             if (!btn) return;
+            e.preventDefault();
             const btnId = parseInt(btn.dataset.btnId);
             const label = btn.dataset.btnLabel;
-            quickRecord(btnId, label);
+            quickRecord(btnId, label, window.scrollY);
         });
         container.dataset.delegateBound = 'true';
     }
@@ -107,7 +112,7 @@ function renderQuickButtons(buttons) {
     lucide.createIcons();
 }
 
-async function quickRecord(btnId, label) {
+async function quickRecord(btnId, label, scrollY = window.scrollY) {
     try {
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
@@ -116,6 +121,11 @@ async function quickRecord(btnId, label) {
         // API 直接返回更新后的概览数据，无需二次请求
         dashboardData = data;
         renderDashboard(data);
+        requestAnimationFrame(() => {
+            if (Number.isFinite(scrollY) && window.scrollY !== scrollY) {
+                window.scrollTo(0, scrollY);
+            }
+        });
     } catch (e) {
         showToast(e.message);
     }

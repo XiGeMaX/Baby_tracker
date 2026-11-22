@@ -1,10 +1,19 @@
-const CACHE_NAME = 'baby-tracker-v1';
+const CACHE_NAME = 'baby-tracker-v6';
+const APP_BASE = new URL(self.registration.scope).pathname.replace(/\/+$/, '');
+const appUrl = path => `${APP_BASE}${path}`;
 const STATIC_ASSETS = [
-    '/',
-    '/static/css/style.css',
-    '/static/js/app.js',
-    '/static/js/dashboard.js',
-    '/static/manifest.json'
+    appUrl('/'),
+    appUrl('/static/css/style.css'),
+    appUrl('/static/js/motion.js'),
+    appUrl('/static/js/app.js'),
+    appUrl('/static/js/dashboard.js'),
+    appUrl('/static/vendor/tailwindcss.min.js'),
+    appUrl('/static/vendor/lucide.min.js'),
+    appUrl('/static/vendor/chart.js-4.4.7.min.js'),
+    appUrl('/static/manifest.json'),
+    appUrl('/static/icons/icon-180.png'),
+    appUrl('/static/icons/icon-192.png'),
+    appUrl('/static/icons/icon-512.png')
 ];
 
 // 安装：预缓存核心资源
@@ -29,7 +38,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
     // API 请求始终走网络
-    if (url.pathname.startsWith('/api/')) {
+    if (url.pathname.includes('/api/')) {
         event.respondWith(
             fetch(event.request).catch(() => new Response(JSON.stringify({ error: '离线' }), {
                 headers: { 'Content-Type': 'application/json' }

@@ -53,7 +53,7 @@ async function doLogin() {
             body: JSON.stringify({ username, password })
         });
         showToast('登录成功');
-        setTimeout(() => window.location.href = '/', 500);
+        setTimeout(() => window.location.href = appUrl('/'), 500);
     } catch (e) {
         errEl.textContent = e.message;
         errEl.classList.remove('hidden');
