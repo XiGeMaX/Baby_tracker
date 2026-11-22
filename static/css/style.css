@@ -1175,6 +1175,95 @@ body.app-modal-open {
     box-shadow: inset 0 1px 0 var(--c-border);
 }
 
+.growth-dose-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+}
+
+.vaccine-plan-button {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+    grid-template-areas:
+        "icon label"
+        "icon meta";
+    align-items: center;
+    column-gap: var(--space-2);
+    min-width: 0;
+    min-height: 44px;
+    padding: 6px var(--space-3);
+    overflow: hidden;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-control);
+    background: var(--c-surface);
+    color: var(--c-text-muted);
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background-color var(--motion-standard) ease,
+        border-color var(--motion-standard) ease,
+        color var(--motion-standard) ease,
+        scale var(--motion-fast) var(--motion-out);
+}
+
+.vaccine-plan-button:hover {
+    background: var(--c-hover-overlay);
+}
+
+.vaccine-plan-button:active {
+    scale: 0.97;
+}
+
+.vaccine-plan-button:focus-visible {
+    border-color: color-mix(in srgb, var(--c-accent) 62%, var(--c-border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-accent) 14%, transparent);
+    outline: 0;
+}
+
+.vaccine-plan-icon {
+    grid-area: icon;
+    width: 16px;
+    height: 16px;
+}
+
+.vaccine-plan-label,
+.vaccine-plan-meta {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vaccine-plan-label {
+    grid-area: label;
+    color: var(--c-text-primary);
+    font-size: var(--text-label);
+    font-weight: var(--weight-semibold);
+    line-height: 1.25;
+}
+
+.vaccine-plan-meta {
+    grid-area: meta;
+    color: currentColor;
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.25;
+    opacity: 0.74;
+}
+
+.vaccine-plan-button[data-plan-status="done"] {
+    border-color: color-mix(in srgb, var(--c-accent) 24%, var(--c-border));
+    background: color-mix(in srgb, var(--c-accent) 9%, var(--c-surface));
+    color: var(--c-accent);
+}
+
+.vaccine-plan-button[data-plan-status="overdue"] {
+    border-color: rgba(239, 68, 68, 0.24);
+    background: rgba(239, 68, 68, 0.08);
+    color: var(--c-danger);
+}
+
 [data-health-click].growth-row,
 [data-countdown-click].growth-row {
     cursor: pointer;
@@ -1272,6 +1361,25 @@ body.app-modal-open {
 }
 .filter-pill:hover { color: var(--c-text-secondary); }
 .filter-pill.active { background: color-mix(in srgb, var(--c-accent) 15%, transparent); color: var(--c-accent); }
+
+.card.schedule-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(var(--control-height-sm), auto));
+    gap: 2px;
+    padding: var(--space-1);
+}
+
+.schedule-filter-grid .filter-pill {
+    min-width: 0;
+    padding-inline: var(--space-1);
+}
+
+@media (min-width: 768px) {
+    .growth-dose-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
 
 /* ── Range Picker (统一选择器样式) ────────────────────── */
 .range-pill {

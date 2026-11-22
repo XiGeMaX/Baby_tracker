@@ -348,20 +348,20 @@ function renderList() {
                     ${nextDose ? `<span class="text-[10px] ${nextDose.status === 'overdue' ? 'text-red-400' : 'text-text-muted'} font-mono">下次: 第${nextDose.dose_index}剂 ${nextDose.due_date.slice(5)}</span>` : ''}
                 </div>
             </div>
-            <div class="flex flex-wrap gap-2">`;
+            <div class="growth-dose-grid">`;
 
         doses.forEach(d => {
             const statusConfig = {
-                done: { bg: 'bg-accent/10 text-accent border-accent/20', icon: 'check', label: d.vaccinated_date || '' },
-                overdue: { bg: 'bg-red-500/10 text-red-400 border-red-500/20', icon: 'alert-circle', label: '逾期' },
-                upcoming: { bg: 'bg-surface text-text-muted border-border', icon: 'clock', label: d.due_date ? d.due_date.slice(5) : '' },
+                done: { icon: 'check', label: d.vaccinated_date || '' },
+                overdue: { icon: 'alert-circle', label: '逾期' },
+                upcoming: { icon: 'clock', label: d.due_date ? d.due_date.slice(5) : '' },
             };
             const cfg = statusConfig[d.status] || statusConfig.upcoming;
-            html += `<button class="flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-mono ${cfg.bg} transition-colors hover:opacity-80"
+            html += `<button type="button" class="vaccine-plan-button" data-plan-status="${d.status}"
                 data-dose-click data-vaccine-name="${esc(d.name)}" data-dose-index="${d.dose_index}" data-status="${d.status}" data-due-date="${esc(d.due_date || '')}" data-custom="${d.is_custom ? '1' : '0'}" data-vaccinated-date="${esc(d.vaccinated_date || '')}" data-note="${esc(d.note_text || d.note || '')}">
-                <i data-lucide="${cfg.icon}" class="w-3 h-3"></i>
-                第${d.dose_index}剂
-                <span class="text-[9px] opacity-70">${cfg.label}</span>
+                <i data-lucide="${cfg.icon}" class="vaccine-plan-icon"></i>
+                <span class="vaccine-plan-label">第${d.dose_index}剂</span>
+                <span class="vaccine-plan-meta">${cfg.label}</span>
             </button>`;
         });
 

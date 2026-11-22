@@ -96,7 +96,9 @@
 - 页面模式切换使用 `trend-segment` 或现有分段控件。
 - 页签使用 `growth-tabs` 和 `growth-tab`。
 - 过滤项使用 `filter-pill`，选中状态不得只依赖颜色，应同时提供文字状态或 `aria-pressed`。
+- 全部日程的八个分类固定使用 `schedule-filter-grid` 显示为四列两行，不得依赖断点或内容宽度改变行列数。
 - 状态标签使用现有 `badge-*` 或 `admin-status-pill` 语义类。
+- 疫苗剂次计划使用 `growth-dose-grid` 和 `vaccine-plan-button`，所有剂次按钮保持等高、等宽和相同圆角，状态只通过语义色区分。
 - 数值、日期、版本使用 `font-mono` 或 `page-meta`，保持等宽数字。
 - 数据统计条内的数值使用 `admin-data-value`，标签使用 `admin-data-label`；不得在业务模板中另写字号、字重或等宽字体。
 
