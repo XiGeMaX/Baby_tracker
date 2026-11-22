@@ -1,23 +1,38 @@
 package app
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 )
 
-func (a *App) getWeightLogs(w http.ResponseWriter, r *http.Request) {
+const (
+	minGrowthWeight = 0.1
+	maxGrowthWeight = 100.0
+	minGrowthHeight = 10.0
+	maxGrowthHeight = 250.0
+)
+
+type growthQueryer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (a *App) getGrowthLogs(w http.ResponseWriter, r *http.Request) {
 	rows, err := a.queryMaps(r.Context(),
 		"SELECT * FROM weight_logs ORDER BY recorded_date DESC, id DESC")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "加载体重记录失败")
+		writeError(w, http.StatusInternalServerError, "加载成长记录失败")
 		return
 	}
 	writeJSON(w, http.StatusOK, rows)
 }
 
-func (a *App) addWeightLog(w http.ResponseWriter, r *http.Request) {
+func (a *App) addGrowthLog(w http.ResponseWriter, r *http.Request) {
 	user := apiUser(r)
 	if !isApproved(user) {
 		writeError(w, http.StatusUnauthorized, "请先登录")
@@ -28,10 +43,23 @@ func (a *App) addWeightLog(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "缺少必填字段")
 		return
 	}
-	weight := floatValue(input["weight"])
+	weight, hasWeight, message := optionalGrowthValue(input, "weight", minGrowthWeight, maxGrowthWeight, "体重")
+	if message != "" {
+		writeError(w, http.StatusBadRequest, message)
+		return
+	}
+	height, hasHeight, message := optionalGrowthValue(input, "height", minGrowthHeight, maxGrowthHeight, "身高")
+	if message != "" {
+		writeError(w, http.StatusBadRequest, message)
+		return
+	}
 	recordedDate := strings.TrimSpace(stringValue(input["recorded_date"]))
-	if weight <= 0 || recordedDate == "" {
-		writeError(w, http.StatusBadRequest, "缺少必填字段")
+	if !hasWeight && !hasHeight {
+		writeError(w, http.StatusBadRequest, "请至少填写体重或身高")
+		return
+	}
+	if recordedDate == "" {
+		writeError(w, http.StatusBadRequest, "请选择日期")
 		return
 	}
 	if _, err := parseDate(recordedDate); err != nil {
@@ -40,30 +68,31 @@ func (a *App) addWeightLog(w http.ResponseWriter, r *http.Request) {
 	}
 	tx, err := a.db.BeginTx(r.Context(), nil)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "记录体重失败")
+		writeError(w, http.StatusInternalServerError, "记录成长数据失败")
 		return
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(r.Context(),
-		"INSERT INTO weight_logs (baby_id, weight, recorded_date, note) VALUES (1, ?, ?, ?)",
-		weight, recordedDate, stringValue(input["note"]))
+		"INSERT INTO weight_logs (baby_id, weight, height, recorded_date, note) VALUES (1, ?, ?, ?, ?)",
+		nullableGrowthValue(weight, hasWeight), nullableGrowthValue(height, hasHeight),
+		recordedDate, stringValue(input["note"]))
 	if err == nil {
-		_, err = tx.ExecContext(r.Context(), "UPDATE babies SET weight = ? WHERE id = 1", weight)
+		err = updateBabyWeightFromLatest(r.Context(), tx)
 	}
 	if err == nil {
 		err = tx.Commit()
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "记录体重失败")
+		writeError(w, http.StatusInternalServerError, "记录成长数据失败")
 		return
 	}
 	id, _ := result.LastInsertId()
-	a.addLog(r.Context(), user, "记录体重", "weight_log", id,
-		fmt.Sprintf("%skg @ %s", formatNumber(weight), recordedDate))
+	a.addLog(r.Context(), user, "记录成长数据", "growth_log", id,
+		growthLogLabel(weight, hasWeight, height, hasHeight, recordedDate))
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "message": "已记录"})
 }
 
-func (a *App) updateWeightLog(w http.ResponseWriter, r *http.Request) {
+func (a *App) updateGrowthLog(w http.ResponseWriter, r *http.Request) {
 	user := apiUser(r)
 	if !isApproved(user) {
 		writeError(w, http.StatusForbidden, "无权限")
@@ -74,10 +103,19 @@ func (a *App) updateWeightLog(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "请求格式无效")
 		return
 	}
-	weight := floatValue(input["weight"])
+	weight, hasWeight, message := optionalGrowthValue(input, "weight", minGrowthWeight, maxGrowthWeight, "体重")
+	if message != "" {
+		writeError(w, http.StatusBadRequest, message)
+		return
+	}
+	height, hasHeight, message := optionalGrowthValue(input, "height", minGrowthHeight, maxGrowthHeight, "身高")
+	if message != "" {
+		writeError(w, http.StatusBadRequest, message)
+		return
+	}
 	recordedDate := strings.TrimSpace(stringValue(input["recorded_date"]))
-	if weight <= 0 {
-		writeError(w, http.StatusBadRequest, "请输入有效体重")
+	if !hasWeight && !hasHeight {
+		writeError(w, http.StatusBadRequest, "请至少填写体重或身高")
 		return
 	}
 	if recordedDate == "" {
@@ -89,30 +127,116 @@ func (a *App) updateWeightLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := pathID(r)
-	if _, err := a.db.ExecContext(r.Context(),
-		"UPDATE weight_logs SET weight = ?, recorded_date = ?, note = ? WHERE id = ?",
-		weight, recordedDate, stringValue(input["note"]), id); err != nil {
-		writeError(w, http.StatusInternalServerError, "更新体重失败")
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "更新成长数据失败")
 		return
 	}
-	a.addLog(r.Context(), user, "编辑体重", "weight_log", id,
-		fmt.Sprintf("%skg @ %s", formatNumber(weight), recordedDate))
+	defer tx.Rollback()
+	result, err := tx.ExecContext(r.Context(),
+		"UPDATE weight_logs SET weight = ?, height = ?, recorded_date = ?, note = ? WHERE id = ?",
+		nullableGrowthValue(weight, hasWeight), nullableGrowthValue(height, hasHeight),
+		recordedDate, stringValue(input["note"]), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "更新成长数据失败")
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		writeError(w, http.StatusNotFound, "成长记录不存在")
+		return
+	}
+	if err := updateBabyWeightFromLatest(r.Context(), tx); err != nil {
+		writeError(w, http.StatusInternalServerError, "更新成长数据失败")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "更新成长数据失败")
+		return
+	}
+	a.addLog(r.Context(), user, "编辑成长数据", "growth_log", id,
+		growthLogLabel(weight, hasWeight, height, hasHeight, recordedDate))
 	writeJSON(w, http.StatusOK, map[string]any{"message": "已更新"})
 }
 
-func (a *App) deleteWeightLog(w http.ResponseWriter, r *http.Request) {
+func (a *App) deleteGrowthLog(w http.ResponseWriter, r *http.Request) {
 	user := apiUser(r)
 	if !isAdmin(user) {
 		writeError(w, http.StatusForbidden, "仅管理员可删除")
 		return
 	}
 	id := pathID(r)
-	if _, err := a.db.ExecContext(r.Context(), "DELETE FROM weight_logs WHERE id = ?", id); err != nil {
-		writeError(w, http.StatusInternalServerError, "删除体重失败")
+	tx, err := a.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "删除成长数据失败")
 		return
 	}
-	a.addLog(r.Context(), user, "删除体重", "weight_log", id, "")
+	defer tx.Rollback()
+	result, err := tx.ExecContext(r.Context(), "DELETE FROM weight_logs WHERE id = ?", id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "删除成长数据失败")
+		return
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		writeError(w, http.StatusNotFound, "成长记录不存在")
+		return
+	}
+	if err := updateBabyWeightFromLatest(r.Context(), tx); err != nil {
+		writeError(w, http.StatusInternalServerError, "删除成长数据失败")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "删除成长数据失败")
+		return
+	}
+	a.addLog(r.Context(), user, "删除成长数据", "growth_log", id, "")
 	writeJSON(w, http.StatusOK, map[string]any{"message": "已删除"})
+}
+
+func optionalGrowthValue(input map[string]any, key string, minValue, maxValue float64, label string) (float64, bool, string) {
+	raw, exists := input[key]
+	if !exists || raw == nil || strings.TrimSpace(stringValue(raw)) == "" {
+		return 0, false, ""
+	}
+	value := floatValue(raw)
+	if value < minValue || value > maxValue {
+		return 0, false, fmt.Sprintf("%s需在 %s-%s 之间", label, formatNumber(minValue), formatNumber(maxValue))
+	}
+	return value, true, ""
+}
+
+func nullableGrowthValue(value float64, present bool) any {
+	if !present {
+		return nil
+	}
+	return value
+}
+
+func growthLogLabel(weight float64, hasWeight bool, height float64, hasHeight bool, recordedDate string) string {
+	parts := make([]string, 0, 2)
+	if hasWeight {
+		parts = append(parts, formatNumber(weight)+"kg")
+	}
+	if hasHeight {
+		parts = append(parts, formatNumber(height)+"cm")
+	}
+	return fmt.Sprintf("%s @ %s", strings.Join(parts, " / "), recordedDate)
+}
+
+func updateBabyWeightFromLatest(ctx context.Context, queryer growthQueryer) error {
+	var weight float64
+	err := queryer.QueryRowContext(ctx,
+		"SELECT weight FROM weight_logs WHERE weight IS NOT NULL ORDER BY recorded_date DESC, id DESC LIMIT 1").
+		Scan(&weight)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("query latest weight: %w", err)
+	}
+	if _, err := queryer.ExecContext(ctx, "UPDATE babies SET weight = ? WHERE id = 1", weight); err != nil {
+		return fmt.Errorf("update latest baby weight: %w", err)
+	}
+	return nil
 }
 
 func (a *App) getTrends(w http.ResponseWriter, r *http.Request) {
@@ -127,12 +251,12 @@ func (a *App) getTrends(w http.ResponseWriter, r *http.Request) {
 	if mode != "day" && mode != "month" && mode != "hour" {
 		mode = "day"
 	}
-	weightDays := queryInt(r, "weight_days", days)
-	if weightDays < 1 {
-		weightDays = 1
+	growthDays := queryInt(r, "growth_days", queryInt(r, "weight_days", days))
+	if growthDays < 1 {
+		growthDays = 1
 	}
-	if weightDays > 365 {
-		weightDays = 365
+	if growthDays > 1825 {
+		growthDays = 1825
 	}
 	hourDate := strings.TrimSpace(r.URL.Query().Get("date"))
 	if _, err := parseDate(hourDate); err != nil {
@@ -141,7 +265,7 @@ func (a *App) getTrends(w http.ResponseWriter, r *http.Request) {
 
 	todayDate := today()
 	startDate := todayDate.AddDate(0, 0, -(days - 1))
-	weightStart := todayDate.AddDate(0, 0, -(weightDays - 1))
+	growthStart := todayDate.AddDate(0, 0, -(growthDays - 1))
 	startString := startDate.Format("2006-01-02")
 
 	var (
@@ -265,11 +389,11 @@ func (a *App) getTrends(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "加载趋势失败")
 		return
 	}
-	weights, err := a.queryMaps(r.Context(), `
-		SELECT id, weight, recorded_date, note FROM weight_logs
-		WHERE recorded_date >= ? ORDER BY recorded_date, id`, weightStart.Format("2006-01-02"))
+	growthLogs, err := a.queryMaps(r.Context(), `
+			SELECT id, weight, height, recorded_date, note FROM weight_logs
+			WHERE recorded_date >= ? ORDER BY recorded_date, id`, growthStart.Format("2006-01-02"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "加载体重失败")
+		writeError(w, http.StatusInternalServerError, "加载成长数据失败")
 		return
 	}
 	baby, _ := a.queryOne(r.Context(), "SELECT * FROM babies ORDER BY id LIMIT 1")
@@ -296,10 +420,12 @@ func (a *App) getTrends(w http.ResponseWriter, r *http.Request) {
 		"feed_hours":        feedHours,
 		"feed_hours_by_day": feedHoursByDay,
 		"food_by_unit":      foodByUnit,
-		"weights":           weights,
+		"growth":            growthLogs,
+		"growth_days":       growthDays,
+		"weights":           growthLogs,
 		"target_ml":         estimate["daily_target_ml"],
 		"days":              days,
-		"weight_days":       weightDays,
+		"weight_days":       growthDays,
 		"mode":              mode,
 	})
 }

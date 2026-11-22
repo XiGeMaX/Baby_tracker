@@ -2,9 +2,9 @@
 <html lang="zh-CN" data-app-base="{{ app_base }}">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <!-- PWA -->
-    <meta name="theme-color" content="#0a0f1a">
+    <meta id="theme-color-meta" name="theme-color" content="#0a0f1a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Baby Tracker">
@@ -44,43 +44,44 @@
         })();
     </script>
 </head>
-<body class="bg-base text-text-primary font-sans min-h-screen md:pb-0 md:pl-20">
+<body class="app-shell bg-base text-text-primary font-sans min-h-screen md:pb-0 md:pl-20">
+    <a class="skip-link" href="#spa-content">跳到主要内容</a>
 
     <!-- 桌面端侧边导航 -->
-    <nav class="hidden md:flex fixed left-0 top-0 h-full w-20 bg-surface border-r border-border flex-col items-center py-6 z-50">
+    <nav class="hidden md:flex fixed left-0 top-0 h-full w-20 bg-surface border-r border-border flex-col items-center py-6 z-50" aria-label="主导航">
         <div class="mb-8">
             <div class="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
-                <i data-lucide="baby" class="w-5 h-5 text-accent"></i>
+                <i data-lucide="baby" class="w-5 h-5 text-accent" aria-hidden="true"></i>
             </div>
         </div>
         <div class="flex flex-col gap-2 flex-1">
-            <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}" title="总览">
-                <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+            <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}" title="总览" aria-label="总览">
+                <i data-lucide="layout-dashboard" class="w-5 h-5" aria-hidden="true"></i>
             </a>
-            <a href="/trends" class="nav-item {% if active_page == 'trends' %}active{% endif %}" title="趋势">
-                <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+            <a href="/trends" class="nav-item {% if active_page == 'trends' %}active{% endif %}" title="趋势" aria-label="趋势">
+                <i data-lucide="bar-chart-3" class="w-5 h-5" aria-hidden="true"></i>
             </a>
-            <a href="/vaccine" class="nav-item {% if active_page == 'vaccine' %}active{% endif %}" title="成长">
-                <i data-lucide="sprout" class="w-5 h-5"></i>
+            <a href="/vaccine" class="nav-item {% if active_page == 'vaccine' %}active{% endif %}" title="成长" aria-label="成长">
+                <i data-lucide="sprout" class="w-5 h-5" aria-hidden="true"></i>
             </a>
             {% if current_user and current_user.role == 'admin' %}
-            <a href="/admin" class="nav-item {% if active_page == 'admin' %}active{% endif %}" title="管理">
-                <i data-lucide="settings" class="w-5 h-5"></i>
+            <a href="/admin" class="nav-item {% if active_page == 'admin' %}active{% endif %}" title="管理" aria-label="管理">
+                <i data-lucide="settings" class="w-5 h-5" aria-hidden="true"></i>
             </a>
             {% endif %}
         </div>
         <!-- 底部用户区域 -->
         <div class="flex flex-col items-center gap-2">
-            <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
-                <i data-lucide="sun" class="w-4 h-4 theme-icon-sun hidden"></i>
-                <i data-lucide="moon" class="w-4 h-4 theme-icon-moon"></i>
+            <button class="theme-toggle" type="button" onclick="toggleTheme()" title="切换主题" aria-label="切换主题">
+                <i data-lucide="sun" class="w-4 h-4 theme-icon-sun hidden" aria-hidden="true"></i>
+                <i data-lucide="moon" class="w-4 h-4 theme-icon-moon" aria-hidden="true"></i>
             </button>
-            <div id="user-avatar-desktop" class="w-9 h-9 rounded-full bg-accent/10 flex items-center justify-center text-accent text-xs font-bold cursor-pointer" onclick="showNicknameModal()" title="修改昵称">
+            <button id="user-avatar-desktop" type="button" class="w-9 h-9 rounded-full bg-accent/10 flex items-center justify-center text-accent text-xs font-bold cursor-pointer" onclick="showNicknameModal()" title="修改昵称" aria-label="修改昵称">
                 {% if current_user %}{{ initial }}{% endif %}
-            </div>
+            </button>
             {% if current_user %}
-            <button onclick="doLogout()" class="text-text-muted hover:text-red-400 transition-colors" title="退出">
-                <i data-lucide="log-out" class="w-4 h-4"></i>
+            <button type="button" onclick="doLogout()" class="text-text-muted hover:text-red-400 transition-colors" title="退出" aria-label="退出登录">
+                <i data-lucide="log-out" class="w-4 h-4" aria-hidden="true"></i>
             </button>
             {% else %}
             <a href="/login" class="text-text-muted hover:text-accent transition-colors" title="登录">
@@ -93,70 +94,66 @@
     <!-- 移动端悬浮导航 -->
     <div class="md:hidden">
         <!-- 遮罩层 -->
-        <div id="fab-overlay" class="fixed inset-0 bg-black/40 z-[55] opacity-0 pointer-events-none transition-opacity duration-300" onclick="fabClose()"></div>
+        <div id="fab-overlay" class="fixed inset-0 bg-black/40 z-[55] opacity-0 pointer-events-none" onclick="fabClose()" aria-hidden="true"></div>
 
         <!-- 展开菜单 -->
         <div id="fab-menu" class="fixed bottom-20 right-4 z-[56] flex flex-col-reverse gap-2 items-end pointer-events-none" aria-hidden="true">
-            <a href="/" class="fab-item {% if active_page == 'dashboard' %}active{% endif %}" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
-                <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+            <a href="/" class="fab-item {% if active_page == 'dashboard' %}active{% endif %}" data-fab-link>
+                <i data-lucide="layout-dashboard" class="w-5 h-5" aria-hidden="true"></i>
                 <span>总览</span>
             </a>
-            <a href="/trends" class="fab-item {% if active_page == 'trends' %}active{% endif %}" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
-                <i data-lucide="bar-chart-3" class="w-5 h-5"></i>
+            <a href="/trends" class="fab-item {% if active_page == 'trends' %}active{% endif %}" data-fab-link>
+                <i data-lucide="bar-chart-3" class="w-5 h-5" aria-hidden="true"></i>
                 <span>趋势</span>
             </a>
-            <a href="/vaccine" class="fab-item {% if active_page == 'vaccine' %}active{% endif %}" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
-                <i data-lucide="sprout" class="w-5 h-5"></i>
+            <a href="/vaccine" class="fab-item {% if active_page == 'vaccine' %}active{% endif %}" data-fab-link>
+                <i data-lucide="sprout" class="w-5 h-5" aria-hidden="true"></i>
                 <span>成长</span>
             </a>
             {% if current_user and current_user.role == 'admin' %}
-            <a href="/admin" class="fab-item {% if active_page == 'admin' %}active{% endif %}" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
-                <i data-lucide="settings" class="w-5 h-5"></i>
+            <a href="/admin" class="fab-item {% if active_page == 'admin' %}active{% endif %}" data-fab-link>
+                <i data-lucide="settings" class="w-5 h-5" aria-hidden="true"></i>
                 <span>管理</span>
             </a>
             {% endif %}
-            <a href="#" onclick="toggleTheme();return false" class="fab-item" style="transform: translateY(16px) scale(0.5); opacity: 0;">
-                <i data-lucide="sun" class="w-5 h-5 theme-icon-sun hidden"></i>
-                <i data-lucide="moon" class="w-5 h-5 theme-icon-moon"></i>
+            <button type="button" onclick="toggleTheme()" class="fab-item" aria-label="切换主题">
+                <i data-lucide="sun" class="w-5 h-5 theme-icon-sun hidden" aria-hidden="true"></i>
+                <i data-lucide="moon" class="w-5 h-5 theme-icon-moon" aria-hidden="true"></i>
                 <span class="theme-label-sun hidden">亮色</span>
                 <span class="theme-label-moon">暗色</span>
-            </a>
+            </button>
             {% if current_user %}
-            <a href="#" onclick="doLogout();return false" class="fab-item" style="transform: translateY(16px) scale(0.5); opacity: 0;">
-                <i data-lucide="log-out" class="w-5 h-5"></i>
+            <button type="button" onclick="doLogout()" class="fab-item" aria-label="退出登录">
+                <i data-lucide="log-out" class="w-5 h-5" aria-hidden="true"></i>
                 <span>退出</span>
-            </a>
+            </button>
             {% else %}
-            <a href="/login" class="fab-item" data-fab-link style="transform: translateY(16px) scale(0.5); opacity: 0;">
-                <i data-lucide="log-in" class="w-5 h-5"></i>
+            <a href="/login" class="fab-item" data-fab-link>
+                <i data-lucide="log-in" class="w-5 h-5" aria-hidden="true"></i>
                 <span>登录</span>
             </a>
             {% endif %}
         </div>
 
         <!-- 悬浮主按钮 -->
-        <button id="fab-btn" class="fixed bottom-5 right-4 z-[57] w-14 h-14 rounded-2xl bg-accent text-base flex items-center justify-center shadow-lg shadow-accent/20 active:scale-90 transition-transform duration-200" onclick="fabToggle()" aria-expanded="false" aria-controls="fab-menu">
-            <i data-lucide="menu" class="w-6 h-6 fab-icon-menu transition-transform duration-300"></i>
-            <i data-lucide="x" class="w-6 h-6 fab-icon-close absolute transition-transform duration-300" style="transform: rotate(-90deg) scale(0); opacity: 0;"></i>
+        <button id="fab-btn" type="button" class="fab-main fixed bottom-5 right-4 z-[57] w-14 h-14 bg-accent text-base flex items-center justify-center shadow-lg" onclick="fabToggle()" aria-expanded="false" aria-controls="fab-menu" aria-label="打开导航">
+            <i data-lucide="menu" class="fab-icon fab-icon-menu w-6 h-6" aria-hidden="true"></i>
+            <i data-lucide="x" class="fab-icon fab-icon-close absolute w-6 h-6" style="transform: rotate(-90deg) scale(0); opacity: 0;" aria-hidden="true"></i>
         </button>
     </div>
 
-    <!-- Toast 通知 -->
-    <div id="toast" class="fixed z-[100]" role="status" aria-live="polite" aria-atomic="true" aria-hidden="true">
-        <div class="bg-surface border border-accent/50 text-text-primary px-4 py-3 rounded-lg shadow-2xl backdrop-blur-sm flex items-start gap-2.5">
-            <i data-lucide="check-circle" class="w-4 h-4 text-accent flex-shrink-0 mt-0.5"></i>
-            <span id="toast-msg" class="text-sm font-medium leading-relaxed break-words"></span>
-        </div>
-    </div>
+    <!-- Toast 通知栈 -->
+    <section id="toast-stack" class="toast-stack" aria-label="通知"></section>
 
     <!-- 昵称修改弹窗 -->
-    <div id="nickname-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-        <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-            <h3 class="text-sm font-medium text-text-secondary mb-3">修改昵称</h3>
+    <div id="nickname-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="nickname-modal-title">
+        <div class="app-modal-panel">
+            <h3 id="nickname-modal-title" class="app-modal-title mb-3">修改昵称</h3>
+            <label class="field-label" for="nickname-input">昵称</label>
             <input type="text" id="nickname-input" class="input-field font-mono" placeholder="输入新昵称" maxlength="20">
-            <div class="flex gap-2 mt-4">
-                <button class="btn-secondary flex-1 text-sm" onclick="closeNicknameModal()">取消</button>
-                <button class="btn-primary flex-1 text-sm" onclick="saveNickname()">保存</button>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary text-sm" onclick="closeNicknameModal()">取消</button>
+                <button type="button" class="btn-primary text-sm" onclick="saveNickname()">保存</button>
             </div>
         </div>
     </div>
@@ -167,6 +164,7 @@
     </main>
 
     <script src="/static/js/motion.js"></script>
+    <script src="/static/js/theme-controls.js"></script>
     <script src="/static/js/app.js"></script>
     <script src="/static/js/spa.js"></script>
     {% block scripts %}{% endblock %}
@@ -178,10 +176,13 @@
             if (isLight) {
                 html.removeAttribute('data-theme');
                 localStorage.setItem('theme', 'dark');
+                document.getElementById('theme-color-meta')?.setAttribute('content', '#0a0f1a');
             } else {
                 html.setAttribute('data-theme', 'light');
                 localStorage.setItem('theme', 'light');
+                document.getElementById('theme-color-meta')?.setAttribute('content', '#f1f5f9');
             }
+            window.ThemeControls?.close();
             updateThemeIcons();
             // 关闭FAB
             if (typeof fabClose === 'function') fabClose();
@@ -193,6 +194,7 @@
             document.querySelectorAll('.theme-icon-moon').forEach(el => el.classList.toggle('hidden', isLight));
             document.querySelectorAll('.theme-label-sun').forEach(el => el.classList.toggle('hidden', !isLight));
             document.querySelectorAll('.theme-label-moon').forEach(el => el.classList.toggle('hidden', isLight));
+            document.getElementById('theme-color-meta')?.setAttribute('content', isLight ? '#f1f5f9' : '#0a0f1a');
         }
 
         // 初始化图标状态
@@ -208,15 +210,14 @@
         // 昵称弹窗
         function showNicknameModal() {
             const m = document.getElementById('nickname-modal');
-            m.classList.remove('hidden');
-            m.classList.add('flex');
-            if (typeof fabClose === 'function') fabClose();
-            document.getElementById('nickname-input').focus();
+            openAppModal(m, {
+                focusSelector: '#nickname-input',
+                onDismiss: closeNicknameModal,
+            });
         }
         function closeNicknameModal() {
             const m = document.getElementById('nickname-modal');
-            m.classList.add('hidden');
-            m.classList.remove('flex');
+            closeAppModal(m);
         }
         async function saveNickname() {
             const nickname = document.getElementById('nickname-input').value.trim();

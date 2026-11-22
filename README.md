@@ -79,23 +79,32 @@ docker run -d --name baby-tracker -p 8964:5000 \
   baby-tracker
 ```
 
-## 本地运行
+## Go 本地运行
 
 要求 Go 1.26.11 或兼容的新版本。
 
 ```bash
-export SECRET_KEY="local-development-secret"
-go run ./cmd/baby-tracker bootstrap
-go run ./cmd/baby-tracker serve
+make setup
+make start
 ```
 
-默认访问 `http://127.0.0.1:5000`。`bootstrap` 用于预创建数据库和默认数据，`serve` 可直接启动服务并自动完成初始化。
+默认访问 `http://127.0.0.1:8964`。`make start` 会下载并校验 Go 模块，构建到 `.build/baby-tracker`，然后在后台启动服务。首次运行会自动创建 `data/baby.db`、默认管理员和会话密钥，因此本机测试不需要预先设置 `SECRET_KEY`。
+
+常用管理命令：
+
+```bash
+make status
+make logs
+make stop
+```
+
+需要在前台查看完整输出时使用 `make run`。修改监听地址时使用 `make start LISTEN_ADDRESS=127.0.0.1:5001`，修改数据目录时使用 `make start DATA_DIR=/path/to/data`。
 
 构建二进制：
 
 ```bash
-CGO_ENABLED=0 go build -trimpath -o baby-tracker ./cmd/baby-tracker
-./baby-tracker serve
+make build
+.build/baby-tracker serve
 ```
 
 ## 配置
@@ -162,18 +171,19 @@ Authorization: Bearer <MCP_API_KEY>
 ## 测试
 
 ```bash
-./scripts/test.sh
+make test
 ```
 
 脚本会执行格式检查、`go vet`、单元测试、竞态检测和 JavaScript 语法检查。也可以直接运行：
 
 ```bash
+go mod verify
 go test ./...
 go test -race ./...
 go vet ./...
 ```
 
-运行完整检查还需要 Node.js 18 或兼容的新版本。设置 `SMOKE_TEST=1 ./scripts/test.sh` 可额外构建并启动临时实例，验证登录页能正常响应。
+运行完整检查还需要 Node.js 18 或兼容的新版本。`make smoke` 会额外构建并启动临时实例，验证登录页、静态资源和初始管理员流程。
 
 ## 项目结构
 
@@ -186,6 +196,7 @@ go vet ./...
 ├── docs/                    HA、MCP 和计划表文档
 ├── screenshots/             历史界面截图
 ├── scripts/test.sh          本地检查脚本
+├── Makefile                 Go 本机部署、依赖、测试和进程管理命令
 ├── Dockerfile               多阶段 Go 镜像
 ├── go.mod / go.sum          Go 依赖
 └── data/                    运行时数据，不提交到 Git

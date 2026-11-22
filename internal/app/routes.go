@@ -61,10 +61,14 @@ func (a *App) registerRoutes() {
 	a.mux.HandleFunc("POST /api/data/clear", a.clearData)
 	a.mux.HandleFunc("GET /api/stats", a.getStats)
 
-	a.mux.HandleFunc("GET /api/weight-logs", a.getWeightLogs)
-	a.mux.HandleFunc("POST /api/weight-logs", a.addWeightLog)
-	a.mux.HandleFunc("PUT /api/weight-logs/{id}", a.updateWeightLog)
-	a.mux.HandleFunc("DELETE /api/weight-logs/{id}", a.deleteWeightLog)
+	a.mux.HandleFunc("GET /api/growth-logs", a.getGrowthLogs)
+	a.mux.HandleFunc("POST /api/growth-logs", a.addGrowthLog)
+	a.mux.HandleFunc("PUT /api/growth-logs/{id}", a.updateGrowthLog)
+	a.mux.HandleFunc("DELETE /api/growth-logs/{id}", a.deleteGrowthLog)
+	a.mux.HandleFunc("GET /api/weight-logs", a.getGrowthLogs)
+	a.mux.HandleFunc("POST /api/weight-logs", a.addGrowthLog)
+	a.mux.HandleFunc("PUT /api/weight-logs/{id}", a.updateGrowthLog)
+	a.mux.HandleFunc("DELETE /api/weight-logs/{id}", a.deleteGrowthLog)
 	a.mux.HandleFunc("GET /api/stats/trends", a.getTrends)
 
 	a.mux.HandleFunc("GET /api/vaccine/schedule", a.getVaccineSchedule)

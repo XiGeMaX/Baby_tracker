@@ -30,7 +30,7 @@ var backupColumns = map[string][]string{
 	"settings":                  {"id", "key", "value", "updated_at"},
 	"users":                     {"id", "username", "password_hash", "nickname", "role", "status", "created_at"},
 	"quick_buttons":             {"id", "type", "sub_type", "label", "amount", "sort_order", "is_active", "food_unit", "created_at"},
-	"weight_logs":               {"id", "baby_id", "weight", "recorded_date", "note", "created_at"},
+	"weight_logs":               {"id", "baby_id", "weight", "height", "recorded_date", "note", "created_at"},
 	"vaccine_records":           {"id", "vaccine_name", "dose_index", "vaccinated_date", "note", "created_at"},
 	"vaccine_plan_overrides":    {"vaccine_name", "dose_index", "custom_due_date"},
 	"vaccine_plan_deleted":      {"vaccine_name", "dose_index"},

@@ -3,10 +3,10 @@
 {% block title %}管理 - Baby Tracker{% endblock %}
 
 {% block content %}
-<div class="space-y-6 fade-in">
-    <div class="flex items-center justify-between">
-        <h1 class="text-xl font-semibold">管理</h1>
-        <a href="/" class="text-text-muted hover:text-text-secondary transition-colors text-sm flex items-center gap-1">
+<div class="app-page space-y-6 fade-in">
+    <div class="page-header flex items-center justify-between">
+        <h1 class="page-title text-xl font-semibold">管理</h1>
+        <a href="/" class="btn-secondary text-text-muted hover:text-text-secondary transition-colors text-sm flex items-center gap-1">
             <i data-lucide="arrow-left" class="w-4 h-4"></i>
             返回
         </a>
@@ -30,7 +30,7 @@
             <div id="admin-settings-panel" class="admin-details-panel">
                 <div class="admin-details-panel-inner admin-details-content space-y-3">
                     <div class="flex flex-wrap items-center justify-between gap-3">
-                        <p class="text-xs text-text-muted">管理员账号：<span class="font-mono text-text-secondary">{{ current_user.username }}</span></p>
+                        <p class="text-xs text-text-muted">管理员账号：<span id="admin-account-name" class="font-mono text-text-secondary">{{ current_user.username }}</span></p>
                         <button class="btn-secondary text-xs px-3 py-1.5" data-change-admin-pw data-admin-id="{{ current_user.id }}" data-admin-name="{{ current_user.username }}">
                             修改管理密码
                         </button>
@@ -55,11 +55,11 @@
                             <div class="mcp-settings-details-inner">
                                 <div class="space-y-3">
                                     <div>
-                                        <label class="text-text-muted text-xs mb-1 block">MCP 端点</label>
+                                        <label class="field-label" for="mcp-endpoint">MCP 端点</label>
                                         <input type="text" id="mcp-endpoint" class="input-field font-mono text-xs" readonly placeholder="启用后生成">
                                     </div>
                                     <div>
-                                        <label class="text-text-muted text-xs mb-1 block">MCP API 密钥</label>
+                                        <label class="field-label" for="mcp-api-key">MCP API 密钥</label>
                                         <div class="mcp-key-row">
                                             <input type="text" id="mcp-api-key" class="input-field font-mono text-xs flex-1" readonly placeholder="点击右侧按钮生成">
                                             <button class="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap" data-copy-mcp-key>复制</button>
@@ -153,26 +153,26 @@
                     <div class="space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label class="text-text-muted text-xs mb-1 block">姓名</label>
+                                <label class="field-label" for="baby-name">姓名</label>
                                 <input type="text" id="baby-name" class="input-field" placeholder="宝宝姓名">
                             </div>
                             <div>
-                                <label class="text-text-muted text-xs mb-1 block">性别</label>
+                                <label class="field-label" for="baby-gender">性别</label>
                                 <select id="baby-gender" class="input-field">
                                     <option value="male">男</option>
                                     <option value="female">女</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="text-text-muted text-xs mb-1 block">出生日期</label>
+                                <label class="field-label" for="baby-birth">出生日期</label>
                                 <input type="date" id="baby-birth" class="input-field font-mono">
                             </div>
                             <div>
-                                <label class="text-text-muted text-xs mb-1 block">体重 (kg)</label>
+                                <label class="field-label" for="baby-weight">体重 (kg)</label>
                                 <input type="number" id="baby-weight" class="input-field font-mono" step="0.1" min="0.5" max="10" placeholder="3.0">
                             </div>
                             <div>
-                                <label class="text-text-muted text-xs mb-1 block">婴儿类型</label>
+                                <label class="field-label" for="baby-premature">婴儿类型</label>
                                 <label class="flex items-center gap-2 cursor-pointer h-[38px]">
                                     <input type="checkbox" id="baby-premature" class="w-4 h-4 rounded border-border bg-surface accent-teal-500">
                                     <span class="text-sm text-text-secondary">高危早产儿（增加6次专属随访）</span>
@@ -205,11 +205,11 @@
                 <div class="admin-details-panel-inner admin-details-content">
                     <div class="space-y-4">
                         <div>
-                            <label class="text-text-muted text-xs mb-1 block">每日目标奶量 (ml)</label>
+                            <label class="field-label" for="custom-target">每日目标奶量 (ml)</label>
                             <input type="number" id="custom-target" class="input-field font-mono" placeholder="如 800" min="100" max="2000">
                         </div>
                         <div>
-                            <label class="text-text-muted text-xs mb-1 block">每日预估喂养次数</label>
+                            <label class="field-label" for="feeds-per-day">每日预估喂养次数</label>
                             <input type="number" id="feeds-per-day" class="input-field font-mono" min="4" max="16" value="8">
                         </div>
                         <button class="btn-primary text-sm" onclick="saveSettings()">保存设置</button>
@@ -350,11 +350,11 @@
             </div>
             <div class="flex gap-2 items-end">
                 <div class="flex-1">
-                    <label class="text-text-muted text-[10px] mb-0.5 block">IP 地址</label>
+                    <label class="field-label" for="ha-host">IP 地址</label>
                     <input type="text" id="ha-host" class="input-field font-mono text-xs" placeholder="192.168.1.100" value="">
                 </div>
                 <div class="w-20">
-                    <label class="text-text-muted text-[10px] mb-0.5 block">端口</label>
+                    <label class="field-label" for="ha-port">端口</label>
                     <input type="number" id="ha-port" class="input-field font-mono text-xs" value="8964">
                 </div>
             </div>
@@ -425,12 +425,12 @@
 </div>
 
 <!-- 添加/编辑按钮弹窗 -->
-<div id="add-btn-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-96 max-w-[90vw]">
-        <h3 id="btn-modal-title" class="text-sm font-medium text-text-secondary mb-4">添加快速记录按钮</h3>
+<div id="add-btn-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="btn-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="btn-modal-title" class="app-modal-title mb-4">添加快速记录按钮</h3>
         <div class="space-y-3">
             <div>
-                <label class="text-text-muted text-xs mb-1 block">类型</label>
+                <label class="field-label" for="new-btn-type">类型</label>
                 <select id="new-btn-type" class="input-field" onchange="updateSubTypes()">
                     <option value="feed">喂养</option>
                     <option value="excrete">排泄</option>
@@ -439,15 +439,15 @@
                 </select>
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">子类型</label>
+                <label class="field-label" for="new-btn-subtype">子类型</label>
                 <select id="new-btn-subtype" class="input-field" onchange="onSubTypeChange()"></select>
             </div>
             <div id="custom-subtype-wrap" class="hidden">
-                <label class="text-text-muted text-xs mb-1 block">自定义子类型名称</label>
+                <label class="field-label" for="custom-subtype-input">自定义子类型名称</label>
                 <input type="text" id="custom-subtype-input" class="input-field" placeholder="如：维D滴剂">
             </div>
             <div id="food-unit-wrap" class="hidden">
-                <label class="text-text-muted text-xs mb-1 block">辅食计量单位</label>
+                <label class="field-label" for="btn-food-unit">辅食计量单位</label>
                 <div class="flex gap-2 items-center">
                     <select id="btn-food-unit" class="input-field flex-1" onchange="onFoodUnitChange()">
                         <option value="g">g (克)</option>
@@ -459,41 +459,41 @@
                 </div>
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">显示标签</label>
+                <label class="field-label" for="new-btn-label">显示标签</label>
                 <input type="text" id="new-btn-label" class="input-field" placeholder="如：配方奶 90ml">
             </div>
             <div>
-                <label id="btn-amount-label" class="text-text-muted text-xs mb-1 block">预设量 (ml，0=不预设)</label>
+                <label id="btn-amount-label" class="field-label" for="new-btn-amount">预设量 (ml，0=不预设)</label>
                 <input type="number" id="new-btn-amount" class="input-field font-mono" value="0" min="0">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">排序</label>
+                <label class="field-label" for="new-btn-order">排序</label>
                 <input type="number" id="new-btn-order" class="input-field font-mono" value="0" min="0">
             </div>
         </div>
-        <div class="flex gap-2 mt-4">
-            <button class="btn-secondary flex-1 text-sm" onclick="closeAddButtonModal()">取消</button>
-            <button id="btn-modal-submit" class="btn-primary flex-1 text-sm" onclick="addButton()">添加</button>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeAddButtonModal()">取消</button>
+            <button type="button" id="btn-modal-submit" class="btn-primary text-sm" onclick="addButton()">添加</button>
         </div>
     </div>
 </div>
 
 <!-- 恢复备份弹窗 -->
-<div id="restore-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 class="text-sm font-medium text-text-secondary mb-3">恢复备份</h3>
+<div id="restore-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="restore-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="restore-modal-title" class="app-modal-title mb-3">恢复备份</h3>
         <div class="space-y-3">
             <div>
-                <label class="text-text-muted text-xs mb-1 block">选择备份文件 (.json)</label>
+                <label class="field-label" for="restore-file">选择备份文件 (.json)</label>
                 <input type="file" id="restore-file" accept=".json" class="input-field text-sm">
             </div>
             <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
                 <p class="text-xs text-red-400">注意：恢复备份将覆盖当前所有数据，此操作不可撤销！</p>
             </div>
         </div>
-        <div class="flex gap-2 mt-4">
-            <button class="btn-secondary flex-1 text-sm" onclick="closeRestoreModal()">取消</button>
-            <button class="btn-primary flex-1 text-sm" onclick="backupRestore()">恢复</button>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeRestoreModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="backupRestore()">恢复</button>
         </div>
     </div>
 </div>

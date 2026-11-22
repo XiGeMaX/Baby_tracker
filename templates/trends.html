@@ -3,150 +3,296 @@
 {% block title %}趋势 - Baby Tracker{% endblock %}
 
 {% block content %}
-<div class="space-y-5 fade-in pb-20 md:pb-0">
-    <div class="flex items-center gap-3 flex-wrap">
-        <h1 class="text-xl font-semibold">趋势</h1>
-        <div class="flex-1"></div>
-        <!-- 模式选择器：日/月/时 -->
-        <div class="card trend-mode-switch flex items-center" role="group" aria-label="趋势时间粒度">
-            <button type="button" class="tab-pill trend-mode-btn active" data-mode="day" aria-pressed="true" onclick="switchTrendMode('day')">日</button>
-            <button type="button" class="tab-pill trend-mode-btn" data-mode="month" aria-pressed="false" onclick="switchTrendMode('month')">月</button>
-            <button type="button" class="tab-pill trend-mode-btn" data-mode="hour" aria-pressed="false" onclick="switchTrendMode('hour')">时</button>
+<div id="trends-page" class="trends-page">
+    <header class="page-header trends-page-header">
+        <div class="page-heading trends-page-heading">
+            <h1 class="page-title trends-title">趋势</h1>
+            <p class="page-subtitle trends-period-copy" id="trends-period-copy">近 14 天</p>
         </div>
-        <!-- 范围选择器（固定位置大小，内容随模式切换） -->
-        <!-- 时模式日期选择器：放在外部，用 label for 触发（iOS兼容） -->
-        <input type="date" id="trend-date" class="sr-only" onchange="onRangeChange(this.value)">
-        <div class="range-pill relative" id="range-picker-wrap">
-            <span class="range-display" id="range-display">14天</span>
-            <!-- 日/月模式：天数 select -->
-            <select id="trend-days" onchange="onRangeChange(this.value)">
+    </header>
+
+    <section class="card trend-panel growth-panel trend-reveal" aria-labelledby="growth-heading">
+        <div class="trend-panel-header">
+            <div class="trend-panel-heading">
+                <span class="trend-icon-well"><i data-lucide="ruler" class="h-4 w-4"></i></span>
+                <div>
+                    <h2 id="growth-heading" class="trend-panel-title">成长曲线</h2>
+                    <p class="trend-panel-subtitle" id="growth-latest-copy">还没有成长记录</p>
+                </div>
+            </div>
+            <div class="trend-panel-actions">
+                <div class="range-pill" id="growth-days-wrap">
+                    <button type="button" class="range-trigger" id="growth-days-trigger"
+                        aria-haspopup="listbox" aria-expanded="false"
+                        data-popover-title="成长曲线范围" onclick="openGrowthDaysPicker(event)">
+                        <span class="range-display" id="growth-days-display">30天</span>
+                        <i data-lucide="chevron-down" class="h-3 w-3"></i>
+                    </button>
+                    <select id="growth-days" class="range-native" tabindex="-1" aria-hidden="true" onchange="onGrowthRangeChange(this.value)">
+                        <option value="30" selected>30天</option>
+                        <option value="90">90天</option>
+                        <option value="180">半年</option>
+                        <option value="365">1年</option>
+                        <option value="1095">3年</option>
+                        <option value="1825">5年</option>
+                    </select>
+                </div>
+                <button type="button" class="trend-action-button" onclick="showGrowthModal()">
+                    <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+                    <span>记录成长</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="growth-summary" role="group" aria-label="成长曲线显示">
+            <button type="button" class="growth-metric is-active" data-growth-metric="weight"
+                aria-pressed="true" onclick="toggleGrowthMetric('weight')">
+                <span class="growth-metric-label"><span class="growth-dot growth-dot-weight"></span>体重</span>
+                <strong class="growth-metric-value" id="latest-weight-value">--</strong>
+                <span class="growth-metric-detail" id="weight-change-value">暂无记录</span>
+            </button>
+            <div class="growth-summary-divider" aria-hidden="true"></div>
+            <button type="button" class="growth-metric is-active" data-growth-metric="height"
+                aria-pressed="true" onclick="toggleGrowthMetric('height')">
+                <span class="growth-metric-label"><span class="growth-dot growth-dot-height"></span>身高</span>
+                <strong class="growth-metric-value" id="latest-height-value">--</strong>
+                <span class="growth-metric-detail" id="height-change-value">暂无记录</span>
+            </button>
+        </div>
+
+        <div class="growth-chart-wrap">
+            <canvas id="growth-chart" role="img" aria-label="体重和身高成长曲线"></canvas>
+            <div id="growth-empty" class="trend-empty-state is-hidden">
+                <span class="trend-empty-icon"><i data-lucide="line-chart" class="h-4 w-4"></i></span>
+                <p>还没有成长记录</p>
+                <button type="button" class="trend-text-button" onclick="showGrowthModal()">添加第一条记录</button>
+            </div>
+        </div>
+
+        <div class="growth-table-header">
+            <button type="button" class="growth-table-toggle" id="growth-table-toggle"
+                aria-expanded="false" aria-controls="growth-table-shell" onclick="toggleGrowthTable()">
+                <span class="growth-table-heading-copy">
+                    <span class="growth-table-title">最近记录</span>
+                    <span class="growth-table-count" id="growth-record-count">0 条</span>
+                </span>
+                <span class="growth-table-toggle-hint">
+                    <span id="growth-table-toggle-label">展开</span>
+                    <i data-lucide="chevron-down" class="h-3.5 w-3.5"></i>
+                </span>
+            </button>
+        </div>
+        <div class="growth-table-shell" id="growth-table-shell" aria-hidden="true" inert>
+            <div class="growth-table-shell-inner">
+                <div class="growth-table-scroll">
+                    <table class="growth-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">日期</th>
+                                <th scope="col">体重</th>
+                                <th scope="col">身高</th>
+                                <th scope="col" class="growth-note-column">备注</th>
+                                <th scope="col" class="growth-actions-column"><span class="sr-only">操作</span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="growth-table-body">
+                            <tr><td colspan="5" class="growth-table-empty">暂无记录</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="growth-history-footer">
+                    <span class="growth-history-summary" id="growth-history-summary" aria-live="polite">显示最近 5 条</span>
+                    <button type="button" class="growth-history-more" id="growth-history-more"
+                        onclick="showMoreGrowthHistory()">
+                        <span id="growth-history-more-label">显示更早记录</span>
+                        <i data-lucide="chevron-down" class="h-3.5 w-3.5"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </section>
+
+    <div class="trends-page-actions">
+        <div class="trend-segment trend-mode-segment" id="trend-mode-segment" role="group" aria-label="趋势时间粒度">
+            <button type="button" class="trend-segment-button active" data-mode="day" aria-pressed="true" onclick="switchTrendMode('day')">日</button>
+            <button type="button" class="trend-segment-button" data-mode="month" aria-pressed="false" onclick="switchTrendMode('month')">月</button>
+            <button type="button" class="trend-segment-button" data-mode="hour" aria-pressed="false" onclick="switchTrendMode('hour')">时</button>
+        </div>
+        <div class="range-pill trend-range-control" id="trend-days-wrap">
+            <button type="button" class="range-trigger" id="trend-days-trigger"
+                aria-haspopup="listbox" aria-expanded="false"
+                data-popover-title="趋势范围" onclick="openTrendDaysPicker(event)">
+                <span class="range-display" id="range-display">14天</span>
+                <i data-lucide="chevron-down" class="h-3 w-3"></i>
+            </button>
+            <select id="trend-days" class="range-native" tabindex="-1" aria-hidden="true" onchange="onRangeChange(this.value)">
                 <option value="7">7天</option>
                 <option value="14" selected>14天</option>
                 <option value="30">30天</option>
                 <option value="60">60天</option>
                 <option value="90">90天</option>
             </select>
-            <!-- 时模式：label 覆盖整个 pill 触发外部 date input -->
-            <label for="trend-date" id="trend-date-label" class="absolute inset-0 cursor-pointer hidden"></label>
+        </div>
+        <div class="range-pill trend-range-control hidden" id="trend-date-wrap">
+            <button type="button" class="range-trigger" id="trend-date-trigger"
+                aria-label="选择小时统计日期" aria-haspopup="dialog" aria-expanded="false"
+                data-popover-title="选择日期" onclick="openTrendDatePicker(event)">
+                <span class="range-display" id="trend-date-display">选择日期</span>
+                <i data-lucide="calendar-days" class="h-3 w-3"></i>
+            </button>
+            <input type="date" id="trend-date" class="range-native" tabindex="-1" aria-hidden="true" onchange="onRangeChange(this.value)">
         </div>
     </div>
 
-    <!-- 体重趋势 -->
-    <div class="card">
-        <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-                <i data-lucide="scale" class="w-4 h-4 text-accent"></i>
-                <h2 class="text-sm font-medium text-text-secondary">体重趋势</h2>
+    <section class="card trend-panel trend-reveal" aria-labelledby="feed-chart-title">
+        <div class="trend-panel-header">
+            <div class="trend-panel-heading">
+                <span class="trend-icon-well"><i data-lucide="milk" class="h-4 w-4"></i></span>
+                <div>
+                    <h2 class="trend-panel-title" id="feed-chart-title">每日喂养量</h2>
+                    <p class="trend-panel-subtitle">目标线仅按日显示</p>
+                </div>
             </div>
-            <div class="flex items-center gap-2">
-                <label class="range-pill relative" id="weight-days-wrap">
-                    <span class="range-display" id="weight-days-display">30天</span>
-                    <select id="weight-days" onchange="loadWeightTrend()">
-                        <option value="30" selected>30天</option>
-                        <option value="90">90天</option>
-                        <option value="180">半年</option>
-                        <option value="365">1年</option>
-                    </select>
+            <div class="chart-stat" id="feed-total-stat"><span>合计</span><strong>--</strong></div>
+        </div>
+        <div class="standard-chart-wrap">
+            <canvas id="feed-chart" role="img" aria-label="喂养量趋势柱状图"></canvas>
+            <div id="feed-empty" class="trend-empty-state is-hidden">
+                <span class="trend-empty-icon"><i data-lucide="bar-chart-3" class="h-4 w-4"></i></span>
+                <p>范围内暂无喂养记录</p>
+            </div>
+        </div>
+    </section>
+
+    <div class="trend-chart-grid">
+        <section class="card trend-panel trend-reveal" id="food-card" aria-labelledby="food-chart-title">
+            <div class="trend-panel-header">
+                <div class="trend-panel-heading">
+                    <span class="trend-icon-well"><i data-lucide="utensils" class="h-4 w-4"></i></span>
+                    <div>
+                        <h2 class="trend-panel-title" id="food-chart-title">每日辅食</h2>
+                        <p class="trend-panel-subtitle" id="food-unit-hint">按计量单位分组</p>
+                    </div>
+                </div>
+                <div id="food-legend" class="compact-chart-legend"></div>
+            </div>
+            <div class="standard-chart-wrap compact">
+                <canvas id="food-chart" role="img" aria-label="辅食趋势堆叠柱状图"></canvas>
+                <div id="food-empty" class="trend-empty-state is-hidden">
+                    <span class="trend-empty-icon"><i data-lucide="utensils" class="h-4 w-4"></i></span>
+                    <p>范围内暂无辅食记录</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="card trend-panel trend-reveal" aria-labelledby="excrete-chart-title">
+            <div class="trend-panel-header">
+                <div class="trend-panel-heading">
+                    <span class="trend-icon-well"><i data-lucide="activity" class="h-4 w-4"></i></span>
+                    <div>
+                        <h2 class="trend-panel-title" id="excrete-chart-title">每日排泄</h2>
+                        <p class="trend-panel-subtitle">排尿与排便次数</p>
+                    </div>
+                </div>
+                <div class="compact-chart-legend" aria-hidden="true">
+                    <span><span class="growth-dot growth-dot-urine"></span>尿</span>
+                    <span><span class="growth-dot growth-dot-stool"></span>便</span>
+                </div>
+            </div>
+            <div class="standard-chart-wrap compact">
+                <canvas id="excrete-chart" role="img" aria-label="排泄趋势堆叠柱状图"></canvas>
+                <div id="excrete-empty" class="trend-empty-state is-hidden">
+                    <span class="trend-empty-icon"><i data-lucide="activity" class="h-4 w-4"></i></span>
+                    <p>范围内暂无排泄记录</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <section class="card trend-panel trend-reveal" id="hour-card" aria-labelledby="hour-chart-title">
+        <div class="trend-panel-header">
+            <div class="trend-panel-heading">
+                <span class="trend-icon-well"><i data-lucide="clock-3" class="h-4 w-4"></i></span>
+                <div>
+                    <h2 class="trend-panel-title" id="hour-chart-title">喂养时段分布</h2>
+                    <p class="trend-panel-subtitle">查看一天中最常喂养的时段</p>
+                </div>
+            </div>
+            <div class="trend-panel-actions">
+                <div class="range-pill" id="hour-day-wrap">
+                    <button type="button" class="range-trigger" id="hour-day-trigger"
+                        aria-label="选择喂养时段统计日期" aria-haspopup="dialog" aria-expanded="false"
+                        data-popover-title="选择日期" onclick="openHourDayPicker(event)">
+                        <span class="range-display" id="hour-day-display">今日</span>
+                        <i data-lucide="calendar-days" class="h-3 w-3"></i>
+                    </button>
+                    <input type="date" id="hour-chart-day" class="range-native" tabindex="-1" aria-hidden="true" onchange="onHourDayChange(this.value)">
+                </div>
+                <button type="button" class="trend-text-button" onclick="clearHourDay()">全部</button>
+            </div>
+        </div>
+        <div class="standard-chart-wrap compact">
+            <canvas id="hour-chart" role="img" aria-label="喂养时段分布柱状图"></canvas>
+            <div id="hour-empty" class="trend-empty-state is-hidden">
+                <span class="trend-empty-icon"><i data-lucide="clock-3" class="h-4 w-4"></i></span>
+                <p>范围内暂无喂养时段数据</p>
+            </div>
+        </div>
+    </section>
+</div>
+
+<div id="growth-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="growth-modal-title" aria-hidden="true">
+    <div class="app-modal-panel">
+        <div class="growth-modal-header">
+            <div>
+                <h2 id="growth-modal-title" class="app-modal-title">添加记录</h2>
+            </div>
+            <button type="button" class="growth-modal-close" aria-label="关闭" data-close-growth-modal>
+                <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+        </div>
+        <form id="growth-form" class="growth-form" onsubmit="saveGrowthLog(event)">
+            <div class="growth-form-grid">
+                <label class="growth-field field-label">
+                    <span>体重 <em>kg</em></span>
+                    <input type="number" id="growth-weight" class="input-field font-mono" inputmode="decimal" step="0.01" min="0.1" max="100" placeholder="6.42">
+                    <small>可选</small>
                 </label>
-                <button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors inline-flex items-center" onclick="showWeightModal()" style="height:28px">记录体重</button>
-            </div>
-        </div>
-        <div style="position:relative;height:200px">
-            <canvas id="weight-chart"></canvas>
-        </div>
-        <div id="weight-list" class="mt-3 space-y-1"></div>
-    </div>
-
-    <!-- 喂养量趋势 -->
-    <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-            <i data-lucide="bar-chart-3" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary" id="feed-chart-title">每日喂养量</h2>
-            <span class="text-[10px] text-text-muted">(ml)</span>
-        </div>
-        <div style="position:relative;height:200px">
-            <canvas id="feed-chart"></canvas>
-        </div>
-    </div>
-
-    <!-- 辅食趋势 -->
-    <div class="card" id="food-card">
-        <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-                <i data-lucide="utensils" class="w-4 h-4 text-accent"></i>
-                <h2 class="text-sm font-medium text-text-secondary" id="food-chart-title">每日辅食</h2>
-                <span class="text-[10px] text-text-muted" id="food-unit-hint"></span>
-            </div>
-            <div id="food-legend" class="flex items-center gap-3 text-xs"></div>
-        </div>
-        <div style="position:relative;height:200px">
-            <canvas id="food-chart"></canvas>
-        </div>
-        <div id="food-empty" class="hidden text-center text-xs text-text-muted py-6">暂无辅食记录</div>
-    </div>
-
-    <!-- 排泄趋势 -->
-    <div class="card">
-        <div class="flex items-center gap-2 mb-3">
-            <i data-lucide="activity" class="w-4 h-4 text-accent"></i>
-            <h2 class="text-sm font-medium text-text-secondary" id="excrete-chart-title">每日排泄</h2>
-            <span class="text-[10px] text-text-muted">(次)</span>
-        </div>
-        <div style="position:relative;height:160px">
-            <canvas id="excrete-chart"></canvas>
-        </div>
-        <div class="flex items-center gap-4 mt-2 text-xs">
-            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>排尿</span>
-            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-400 inline-block"></span>排便</span>
-        </div>
-    </div>
-
-    <!-- 喂养时段分布（仅日模式显示） -->
-    <div class="card" id="hour-card">
-        <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center gap-2">
-                <i data-lucide="clock" class="w-4 h-4 text-accent"></i>
-                <h2 class="text-sm font-medium text-text-secondary">喂养时段分布</h2>
-                <span class="text-[10px] text-text-muted">(次)</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <input type="date" id="hour-chart-day" class="sr-only" onchange="onHourDayChange(this.value)">
-                <label class="range-pill relative" for="hour-chart-day" id="hour-day-wrap">
-                    <span class="range-display" id="hour-day-display">今日</span>
+                <label class="growth-field field-label">
+                    <span>身高 <em>cm</em></span>
+                    <input type="number" id="growth-height" class="input-field font-mono" inputmode="decimal" step="0.1" min="10" max="250" placeholder="63.5">
+                    <small>可选</small>
                 </label>
-                <button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors inline-flex items-center" onclick="clearHourDay()" style="height:28px">全部</button>
             </div>
-        </div>
-        <div style="position:relative;height:160px">
-            <canvas id="hour-chart"></canvas>
-        </div>
+            <div class="growth-field field-label">
+                <span id="growth-date-label">日期</span>
+                <div class="range-pill growth-date-control">
+                    <button type="button" class="range-trigger" id="growth-date-trigger"
+                        aria-labelledby="growth-date-label growth-date-display"
+                        aria-haspopup="dialog" aria-expanded="false"
+                        data-popover-title="选择成长记录日期" onclick="openGrowthDatePicker(event)">
+                        <span class="range-display font-mono" id="growth-date-display">选择日期</span>
+                        <i data-lucide="calendar-days" class="h-3.5 w-3.5"></i>
+                    </button>
+                    <input type="date" id="growth-date" class="range-native" tabindex="-1"
+                        aria-hidden="true" onchange="updateGrowthDateDisplay()">
+                </div>
+            </div>
+            <label class="growth-field field-label">
+                <span>备注</span>
+                <input type="text" id="growth-note" class="input-field" maxlength="80" placeholder="例如：满月体检">
+            </label>
+            <p class="growth-form-hint">体重和身高至少填写一项</p>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary flex-1 text-sm" data-close-growth-modal>取消</button>
+                <button type="submit" class="btn-primary flex-1 text-sm" id="growth-save-button">保存</button>
+            </div>
+        </form>
     </div>
 </div>
 
-<!-- 体重记录弹窗 -->
-<div id="weight-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 id="weight-modal-title" class="text-sm font-medium text-text-secondary mb-3">记录体重</h3>
-        <div class="space-y-3">
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">体重 (kg)</label>
-                <input type="number" id="weight-value" class="input-field font-mono" step="0.01" min="0.5" max="20" placeholder="3.50">
-            </div>
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">日期</label>
-                <input type="date" id="weight-date" class="input-field font-mono">
-            </div>
-            <div>
-                <label class="text-text-muted text-xs mb-1 block">备注</label>
-                <input type="text" id="weight-note" class="input-field" placeholder="可选">
-            </div>
-        </div>
-        <div class="flex gap-2 mt-4">
-            <button class="btn-secondary flex-1 text-sm" onclick="closeWeightModal()">取消</button>
-            <button class="btn-primary flex-1 text-sm" onclick="saveWeight()">保存</button>
-        </div>
-    </div>
-</div>
+<div id="trend-popover" class="trend-popover is-hidden" aria-hidden="true"></div>
 {% endblock %}
 
 {% block scripts %}

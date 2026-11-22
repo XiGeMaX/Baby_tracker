@@ -23,37 +23,145 @@ function appUrl(path) {
 }
 
 // ── Toast ─────────────────────────────────────────────────
-let toastHideTimer = null;
-let toastShowFrame = null;
+const TOAST_VISIBLE_LIMIT = 3;
+const TOAST_STACK_OFFSET = 10;
+const TOAST_EXIT_MS = 180;
+const toastTimers = new WeakMap();
+let toastSequence = 0;
 
-function hideToast() {
-    const toast = document.getElementById('toast');
-    if (!toast) return;
-    toast.classList.remove('show');
-    toast.setAttribute('aria-hidden', 'true');
-    toastHideTimer = null;
+const TOAST_TYPES = {
+    success: { icon: 'check-circle', duration: 3600 },
+    info: { icon: 'info', duration: 3800 },
+    warning: { icon: 'triangle-alert', duration: 4400 },
+    error: { icon: 'circle-alert', duration: 5200 },
+};
+
+function resolveToastType(message, requestedType) {
+    if (Object.prototype.hasOwnProperty.call(TOAST_TYPES, requestedType)) return requestedType;
+    if (/请(?:先|输入|选择|至少)|不一致|长度应为|不能为空/.test(message)) return 'warning';
+    if (/失败|错误|异常|无法|不存在|\b(?:failed|failure|error|network|fetch)\b/i.test(message)) return 'error';
+    return 'success';
 }
 
-function showToast(msg) {
-    const toast = document.getElementById('toast');
-    const toastMsg = document.getElementById('toast-msg');
-    if (!toast || !toastMsg) return;
+function positionToastStack() {
+    const stack = document.getElementById('toast-stack');
+    if (!stack) return;
 
-    clearTimeout(toastHideTimer);
-    toastMsg.textContent = msg;
-    toast.classList.remove('hidden');
-    toast.setAttribute('aria-hidden', 'false');
+    const toasts = Array.from(stack.querySelectorAll('.toast-item:not(.is-leaving)'));
+    let maxHeight = 0;
+    toasts.slice(0, TOAST_VISIBLE_LIMIT).forEach((toast, index) => {
+        const depth = Math.min(index, TOAST_VISIBLE_LIMIT - 1);
+        toast.style.setProperty('--toast-y', `${depth * TOAST_STACK_OFFSET}px`);
+        toast.style.setProperty('--toast-scale', String(1 - depth * 0.035));
+        toast.style.setProperty('--toast-opacity', String(1 - depth * 0.22));
+        toast.style.zIndex = String(TOAST_VISIBLE_LIMIT - depth);
+        toast.setAttribute('aria-hidden', index === 0 ? 'false' : 'true');
+        maxHeight = Math.max(maxHeight, toast.offsetHeight);
+    });
 
-    if (!toast.classList.contains('show')) {
-        if (toastShowFrame) cancelAnimationFrame(toastShowFrame);
-        void toast.offsetWidth;
-        toastShowFrame = requestAnimationFrame(() => {
-            toastShowFrame = null;
-            toast.classList.add('show');
-        });
+    const visibleCount = Math.min(toasts.length, TOAST_VISIBLE_LIMIT);
+    const stackHeight = visibleCount > 0
+        ? maxHeight + (visibleCount - 1) * TOAST_STACK_OFFSET
+        : 0;
+    stack.style.height = `${stackHeight}px`;
+    stack.classList.toggle('has-toasts', toasts.length > 0);
+}
+
+function dismissToast(toast) {
+    if (!toast || toast.classList.contains('is-leaving')) return;
+
+    const timer = toastTimers.get(toast);
+    if (timer) clearTimeout(timer);
+    toastTimers.delete(toast);
+    toast.classList.add('is-leaving');
+    toast.setAttribute('aria-hidden', 'true');
+    positionToastStack();
+
+    const finish = () => {
+        toast.remove();
+        positionToastStack();
+    };
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion || typeof toast.animate !== 'function') {
+        requestAnimationFrame(finish);
+        return;
     }
 
-    toastHideTimer = setTimeout(hideToast, 3600);
+    const computed = getComputedStyle(toast);
+    const animation = toast.animate([
+        {
+            opacity: computed.opacity,
+            transform: computed.transform,
+            filter: computed.filter,
+        },
+        {
+            opacity: 0,
+            transform: 'translate3d(0, -8px, 0) scale(0.98)',
+            filter: 'blur(2px)',
+        },
+    ], {
+        duration: TOAST_EXIT_MS,
+        easing: 'cubic-bezier(0.4, 0, 1, 1)',
+        fill: 'forwards',
+    });
+    animation.finished.catch(() => {}).finally(finish);
+}
+
+function hideToast() {
+    const stack = document.getElementById('toast-stack');
+    const frontToast = stack?.querySelector('.toast-item:not(.is-leaving)');
+    if (frontToast) dismissToast(frontToast);
+}
+
+function showToast(message, typeOrOptions = null) {
+    const text = String(message ?? '').trim();
+    const stack = document.getElementById('toast-stack');
+    if (!text || !stack) return null;
+
+    const options = typeOrOptions && typeof typeOrOptions === 'object'
+        ? typeOrOptions
+        : { type: typeOrOptions };
+    const type = resolveToastType(text, options.type);
+    const config = TOAST_TYPES[type];
+
+    const toast = document.createElement('article');
+    toast.className = `toast-item toast-item--${type} is-entering`;
+    toast.dataset.toastType = type;
+    toast.dataset.toastOrder = String(++toastSequence);
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    toast.setAttribute('aria-atomic', 'true');
+
+    const iconSlot = document.createElement('span');
+    iconSlot.className = 'toast-icon-slot';
+    iconSlot.setAttribute('aria-hidden', 'true');
+    const icon = document.createElement('i');
+    icon.dataset.lucide = config.icon;
+    icon.className = 'toast-icon';
+    iconSlot.appendChild(icon);
+
+    const copy = document.createElement('p');
+    copy.className = 'toast-message';
+    copy.textContent = text;
+    toast.append(iconSlot, copy);
+    stack.prepend(toast);
+
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+
+    positionToastStack();
+    requestAnimationFrame(() => toast.classList.remove('is-entering'));
+
+    const activeToasts = Array.from(stack.querySelectorAll('.toast-item:not(.is-leaving)'));
+    activeToasts.slice(TOAST_VISIBLE_LIMIT).forEach(dismissToast);
+
+    const duration = Number.isFinite(options.duration)
+        ? Math.max(1200, Number(options.duration))
+        : config.duration;
+    const timer = setTimeout(() => dismissToast(toast), duration);
+    toastTimers.set(toast, timer);
+    return toast;
 }
 
 // ── API Helper ───────────────────────────────────────────
@@ -85,6 +193,105 @@ function esc(str) {
     if (str === null || str === undefined) return '';
     return String(str).replace(/[&"'<>]/g, c => ESC_MAP[c]);
 }
+
+// ── Shared Modal Lifecycle ───────────────────────────────
+const appModalStack = [];
+const APP_MODAL_EXIT_MS = 240;
+
+function openAppModal(modal, { focusSelector, onDismiss } = {}) {
+    if (!modal) return;
+    clearTimeout(modal._appModalCloseTimer);
+    modal._appModalCloseTimer = null;
+    const openIndex = appModalStack.indexOf(modal);
+    if (openIndex >= 0) appModalStack.splice(openIndex, 1);
+
+    modal._previousFocus = document.activeElement;
+    modal._appModalDismiss = onDismiss || null;
+    appModalStack.push(modal);
+    document.body.classList.add('app-modal-open');
+    modal.classList.remove('hidden', 'is-closing');
+    modal.classList.add('flex');
+    modal.setAttribute('aria-hidden', 'false');
+
+    if (!modal.dataset.appModalBound) {
+        modal.addEventListener('click', event => {
+            if (event.target === modal) dismissAppModal(modal);
+        });
+        modal.dataset.appModalBound = 'true';
+    }
+
+    if (typeof fabClose === 'function') fabClose();
+    requestAnimationFrame(() => {
+        modal.classList.add('is-open');
+        if (focusSelector) modal.querySelector(focusSelector)?.focus();
+    });
+}
+
+function closeAppModal(modal) {
+    if (!modal || modal.classList.contains('hidden')) return;
+    clearTimeout(modal._appModalCloseTimer);
+    modal.classList.add('is-closing');
+    modal.classList.remove('is-open');
+    modal.setAttribute('aria-hidden', 'true');
+
+    const stackIndex = appModalStack.indexOf(modal);
+    if (stackIndex >= 0) appModalStack.splice(stackIndex, 1);
+
+    const previous = modal._previousFocus;
+    modal._previousFocus = null;
+    modal._appModalDismiss = null;
+    if (previous && document.contains(previous)) requestAnimationFrame(() => previous.focus());
+
+    const release = () => {
+        if (appModalStack.includes(modal)) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex', 'is-closing');
+        document.body.classList.toggle('app-modal-open', appModalStack.length > 0);
+    };
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reducedMotion) {
+        release();
+        return;
+    }
+    modal._appModalCloseTimer = setTimeout(() => {
+        modal._appModalCloseTimer = null;
+        release();
+    }, APP_MODAL_EXIT_MS);
+}
+
+function dismissAppModal(modal) {
+    if (!modal) return;
+    if (typeof modal._appModalDismiss === 'function') {
+        modal._appModalDismiss();
+        return;
+    }
+    closeAppModal(modal);
+}
+
+document.addEventListener('keydown', event => {
+    if (event.defaultPrevented || appModalStack.length === 0) return;
+    const modal = appModalStack[appModalStack.length - 1];
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        dismissAppModal(modal);
+        return;
+    }
+    if (event.key !== 'Tab' || !modal.contains(document.activeElement)) return;
+
+    const focusable = Array.from(modal.querySelectorAll(
+        'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    )).filter(element => element.getClientRects().length > 0);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+});
 
 // ── Format Time ──────────────────────────────────────────
 function formatTime(ts) {
@@ -161,34 +368,33 @@ function showConfirm(message, { confirmText, danger } = {}) {
         if (!modal) {
             modal = document.createElement('div');
             modal.id = 'confirm-modal';
-            modal.className = 'fixed inset-0 z-[95] hidden items-center justify-center bg-black/60';
+            modal.className = 'app-modal hidden items-center justify-center';
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            modal.setAttribute('aria-labelledby', 'confirm-modal-title');
             document.body.appendChild(modal);
         }
-        const btnClass = danger
-            ? 'bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30'
-            : 'bg-accent/20 border-accent/40 text-accent hover:bg-accent/30';
+        const btnClass = danger ? 'btn-danger' : 'btn-primary';
         modal.innerHTML = `
-        <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-            <p class="text-sm text-text-primary mb-5">${esc(message)}</p>
-            <div class="flex gap-2">
-                <button id="confirm-cancel" class="btn-secondary flex-1 text-sm">取消</button>
-                <button id="confirm-ok" class="flex-1 text-sm px-4 py-2 rounded-lg border transition-colors ${btnClass}">${esc(confirmText || '确定')}</button>
+        <div class="app-modal-panel">
+            <h3 id="confirm-modal-title" class="app-modal-title mb-3">请确认</h3>
+            <p class="text-sm text-text-secondary mb-5">${esc(message)}</p>
+            <div class="modal-actions">
+                <button type="button" id="confirm-cancel" class="btn-secondary text-sm">取消</button>
+                <button type="button" id="confirm-ok" class="${btnClass} text-sm">${esc(confirmText || '确定')}</button>
             </div>
         </div>`;
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-
-        // 关闭FAB悬浮导航，避免冲突
-        if (typeof fabClose === 'function') fabClose();
 
         const close = (result) => {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
+            closeAppModal(modal);
             resolve(result);
         };
         document.getElementById('confirm-cancel').onclick = () => close(false);
         document.getElementById('confirm-ok').onclick = () => close(true);
-        modal.onclick = (e) => { if (e.target === modal) close(false); };
+        openAppModal(modal, {
+            focusSelector: '#confirm-cancel',
+            onDismiss: () => close(false),
+        });
     });
 }
 
@@ -242,18 +448,21 @@ function _showEditModal(r) {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'edit-modal';
-        modal.className = 'fixed inset-0 z-[90] hidden items-center justify-center bg-black/60';
+        modal.className = 'app-modal hidden items-center justify-center';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'edit-modal-title');
         document.body.appendChild(modal);
     }
 
     const ts = r.timestamp || '';
 
     modal.innerHTML = `
-    <div class="edit-modal-content bg-surface border border-border rounded-xl p-6 w-[420px] max-w-[90vw]">
-        <h3 class="text-sm font-medium text-text-secondary mb-4">编辑记录 #${r.id}</h3>
+    <div class="app-modal-panel">
+        <h3 id="edit-modal-title" class="app-modal-title mb-4">编辑记录 #${r.id}</h3>
         <div class="space-y-3">
             <div>
-                <label class="text-text-muted text-xs mb-1 block">类型</label>
+                <label class="field-label" for="edit-type">类型</label>
                 <select id="edit-type" class="input-field" onchange="_onEditTypeChange()">
                     <option value="feed" ${r.type==='feed'?'selected':''}>喂养</option>
                     <option value="excrete" ${r.type==='excrete'?'selected':''}>排泄</option>
@@ -262,15 +471,15 @@ function _showEditModal(r) {
                 </select>
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">子类型</label>
+                <label class="field-label" for="edit-subtype">子类型</label>
                 <select id="edit-subtype" class="input-field" onchange="_onEditSubtypeChange()"></select>
             </div>
             <div id="edit-custom-subtype-wrap" class="hidden">
-                <label class="text-text-muted text-xs mb-1 block">自定义子类型名称</label>
+                <label class="field-label" for="edit-custom-subtype-input">自定义子类型名称</label>
                 <input type="text" id="edit-custom-subtype-input" class="input-field" placeholder="如：维D滴剂">
             </div>
             <div id="edit-food-unit-wrap" class="hidden">
-                <label class="text-text-muted text-xs mb-1 block">辅食计量单位</label>
+                <label class="field-label" for="edit-food-unit">辅食计量单位</label>
                 <div class="flex gap-2 items-center">
                     <select id="edit-food-unit" class="input-field flex-1" onchange="_onEditFoodUnitChange()">
                         <option value="g">g (克)</option>
@@ -282,54 +491,52 @@ function _showEditModal(r) {
                 </div>
             </div>
             <div>
-                <label id="edit-amount-label" class="text-text-muted text-xs mb-1 block">量 (ml)</label>
+                <label id="edit-amount-label" class="field-label" for="edit-amount">量 (ml)</label>
                 <input type="number" id="edit-amount" class="input-field font-mono" value="${esc(r.amount || '')}" min="0">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">时长 (分钟)</label>
+                <label class="field-label" for="edit-duration">时长 (分钟)</label>
                 <input type="number" id="edit-duration" class="input-field font-mono" value="${esc(r.duration || '')}" min="0">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">颜色</label>
+                <label class="field-label" for="edit-color">颜色</label>
                 <input type="text" id="edit-color" class="input-field" value="${esc(r.color || '')}">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">性状</label>
+                <label class="field-label" for="edit-consistency">性状</label>
                 <input type="text" id="edit-consistency" class="input-field" value="${esc(r.consistency || '')}">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">体温 (°C)</label>
+                <label class="field-label" for="edit-temperature">体温 (°C)</label>
                 <input type="number" id="edit-temperature" class="input-field font-mono" value="${esc(r.temperature || '')}" step="0.1">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">日期</label>
+                <label class="field-label" for="edit-date">日期</label>
                 <input type="date" id="edit-date" class="input-field font-mono" value="${esc(ts.slice(0,10))}">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">时间</label>
+                <label class="field-label" for="edit-time">时间</label>
                 <input type="time" id="edit-time" class="input-field font-mono" value="${esc(ts.slice(11,16))}">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">备注</label>
+                <label class="field-label" for="edit-note">备注</label>
                 <input type="text" id="edit-note" class="input-field" value="${esc(r.note || '')}">
             </div>
         </div>
-        <div class="flex gap-2 mt-4">
-            <button class="btn-secondary flex-1 text-sm" onclick="closeEditModal()">取消</button>
-            <button class="btn-primary flex-1 text-sm" onclick="_saveEditRecord(${r.id})">保存</button>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeEditModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="_saveEditRecord(${r.id})">保存</button>
         </div>
     </div>`;
-
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-
-    // 关闭FAB悬浮导航，避免冲突
-    if (typeof fabClose === 'function') fabClose();
 
     window._editCurrentSubType = r.sub_type;
     window._editCurrentFoodUnit = r.food_unit || '';
     _onEditTypeChange();
     _syncFoodUnitUI();
+    openAppModal(modal, {
+        focusSelector: '#edit-type-trigger, #edit-type',
+        onDismiss: closeEditModal,
+    });
 }
 
 function _onEditTypeChange() {
@@ -436,10 +643,7 @@ function _updateAmountLabel() {
 
 function closeEditModal() {
     const modal = document.getElementById('edit-modal');
-    if (modal) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }
+    closeAppModal(modal);
 }
 
 async function _saveEditRecord(id) {

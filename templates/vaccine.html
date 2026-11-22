@@ -4,21 +4,20 @@
 
 {% block content %}
 <div class="growth-page fade-in pb-20 md:pb-0">
-    <div class="growth-header">
-        <div class="growth-heading">
-            <h1 class="text-xl font-semibold">成长</h1>
-            <span id="vaccine-age" class="text-xs text-text-muted font-mono truncate"></span>
+    <header class="page-header growth-header">
+        <div class="page-heading">
+            <h1 class="page-title">成长</h1>
+            <p id="vaccine-age" class="page-subtitle page-meta"></p>
         </div>
         <div id="growth-action-slot" class="growth-action-slot">
-            <label id="date-picker-wrap" data-growth-action="schedule" class="growth-action is-active text-xs rounded border border-accent/30 text-accent hover:bg-accent/10 cursor-pointer overflow-hidden" aria-label="选择日程日期">
-                <span id="date-display">--</span>
-                <input type="date" id="schedule-date-picker" class="absolute opacity-0 inset-0 cursor-pointer" onchange="onScheduleDatePick(this.value)">
-            </label>
+            <div id="date-picker-wrap" data-growth-action="schedule" class="growth-action growth-date-picker is-active">
+                <input type="date" id="schedule-date-picker" class="input-field" aria-label="选择日程日期" onchange="onScheduleDatePick(this.value)">
+            </div>
             <button type="button" id="vaccine-add-btn" data-growth-action="vaccine" onclick="showAddVaccineModal()" class="growth-action text-xs rounded border border-accent/30 text-accent hover:bg-accent/10" aria-hidden="true">+ 自定义</button>
             <button type="button" id="health-add-btn" data-growth-action="health" onclick="showAddHealthModal()" class="growth-action text-xs rounded border border-accent/30 text-accent hover:bg-accent/10" aria-hidden="true">+ 自定义</button>
             <button type="button" id="countdown-add-btn" data-growth-action="countdown" onclick="showCountdownModal()" class="growth-action text-xs rounded border border-accent/30 text-accent hover:bg-accent/10" aria-hidden="true">+ 倒数日</button>
         </div>
-    </div>
+    </header>
 
     <!-- Tab 切换 -->
     <div id="growth-tabs" class="growth-tabs card max-w-md mx-auto" role="tablist" aria-label="成长分类">
@@ -141,198 +140,186 @@
 </div>
 
 <!-- 计划日期修改弹窗 -->
-<div id="plan-date-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 id="plan-date-modal-title" class="text-sm font-medium text-text-secondary mb-3">修改计划日期</h3>
+<div id="plan-date-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="plan-date-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="plan-date-modal-title" class="app-modal-title mb-4">修改计划日期</h3>
         <input type="hidden" id="pdm-name">
         <input type="hidden" id="pdm-dose">
         <input type="hidden" id="pdm-custom">
-        <div class="space-y-3">
-            <div>
-                <div class="flex items-center justify-between mb-1">
-                    <label class="text-text-muted text-xs">计划接种日期</label>
-                    <button class="text-[10px] text-accent hover:underline" onclick="savePlanDate()">修改接种日期</button>
-                </div>
-                <input type="date" id="pdm-date" class="input-field font-mono">
-            </div>
+        <div>
+            <label class="field-label" for="pdm-date">计划接种日期</label>
+            <input type="date" id="pdm-date" class="input-field font-mono">
         </div>
-        <div class="mt-4">
-            <button class="btn-primary w-full text-sm" onclick="planDateToRecord()">记录接种</button>
+        <div class="modal-actions">
+            <button type="button" class="btn-danger text-xs" onclick="deleteVaccinePlan()">删除计划</button>
+            <button type="button" class="btn-secondary text-sm" onclick="closePlanDateModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="savePlanDate()">保存</button>
         </div>
-        <div class="flex gap-2 mt-2">
-            <button class="btn-secondary flex-1 text-sm" onclick="closePlanDateModal()">取消</button>
-            <button class="flex-1 text-sm px-3 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors" onclick="deleteVaccinePlan()">删除计划</button>
-        </div>
+        <button type="button" class="btn-primary w-full text-sm mt-2" onclick="planDateToRecord()">记录接种</button>
     </div>
 </div>
 
 <!-- 接种记录弹窗 -->
-<div id="vaccine-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 id="vaccine-modal-title" class="text-sm font-medium text-text-secondary mb-3">记录接种</h3>
+<div id="vaccine-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="vaccine-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="vaccine-modal-title" class="app-modal-title mb-4">记录接种</h3>
         <input type="hidden" id="vm-name">
         <input type="hidden" id="vm-dose">
         <div class="space-y-3">
             <div>
-                <label class="text-text-muted text-xs mb-1 block">接种日期</label>
+                <label class="field-label" for="vm-date">接种日期</label>
                 <input type="date" id="vm-date" class="input-field font-mono">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">备注</label>
+                <label class="field-label" for="vm-note">备注</label>
                 <input type="text" id="vm-note" class="input-field" placeholder="可选">
             </div>
         </div>
-        <div class="flex gap-2 mt-4">
-            <button class="btn-primary flex-1 text-sm" onclick="saveVaccineRecord()">记录接种</button>
-            <button class="btn-secondary flex-1 text-sm" onclick="closeVaccineModal()">取消</button>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeVaccineModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="saveVaccineRecord()">记录接种</button>
         </div>
     </div>
 </div>
 
 <!-- 编辑疫苗记录弹窗 -->
-<div id="edit-vaccine-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 id="edit-vaccine-modal-title" class="text-sm font-medium text-text-secondary mb-3">编辑接种记录</h3>
+<div id="edit-vaccine-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="edit-vaccine-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="edit-vaccine-modal-title" class="app-modal-title mb-4">编辑接种记录</h3>
         <input type="hidden" id="evm-name">
         <input type="hidden" id="evm-dose">
         <div class="space-y-3">
             <div>
-                <label class="text-text-muted text-xs mb-1 block">接种日期</label>
+                <label class="field-label" for="evm-date">接种日期</label>
                 <input type="date" id="evm-date" class="input-field font-mono">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">备注</label>
+                <label class="field-label" for="evm-note">备注</label>
                 <input type="text" id="evm-note" class="input-field" placeholder="可选">
             </div>
         </div>
         <div class="flex gap-2 mt-4">
-            <button class="text-xs px-2 py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors" onclick="deleteVaccineFromEdit()">删除记录</button>
+            <button type="button" class="btn-danger text-xs" onclick="deleteVaccineFromEdit()">删除记录</button>
             <div class="flex-1"></div>
-            <button class="btn-secondary text-sm" onclick="closeEditVaccineModal()">取消</button>
-            <button class="btn-primary text-sm" onclick="updateVaccineRecord()">保存</button>
+            <button type="button" class="btn-secondary text-sm" onclick="closeEditVaccineModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="updateVaccineRecord()">保存</button>
         </div>
     </div>
 </div>
 
 <!-- 自定义疫苗弹窗 -->
-<div id="add-vaccine-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-96 max-w-[90vw] max-h-[80vh] overflow-y-auto">
-        <h3 class="text-sm font-medium text-text-secondary mb-3">添加自定义疫苗</h3>
+<div id="add-vaccine-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="add-vaccine-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="add-vaccine-modal-title" class="app-modal-title mb-4">添加自定义疫苗</h3>
         <div class="space-y-3">
             <div>
-                <label class="text-text-muted text-xs mb-1 block">疫苗名称</label>
+                <label class="field-label" for="av-name">疫苗名称</label>
                 <input type="text" id="av-name" class="input-field" placeholder="如：水痘疫苗">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">剂次计划 <span class="text-[9px] text-text-muted">(当天日期=已接种, 其他=计划中)</span></label>
+                <span class="field-label">剂次计划</span>
                 <div id="av-doses-container" class="space-y-2"></div>
-                <button onclick="addDoseRow()" class="text-xs text-accent hover:underline mt-1">+ 添加剂次</button>
+                <button type="button" onclick="addDoseRow()" class="btn-secondary text-xs mt-2">添加剂次</button>
             </div>
         </div>
-        <div class="flex gap-2 mt-4">
-            <button class="btn-secondary flex-1 text-sm" onclick="closeAddVaccineModal()">取消</button>
-            <button class="btn-primary flex-1 text-sm" onclick="saveCustomVaccine()">确认</button>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeAddVaccineModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="saveCustomVaccine()">确认</button>
         </div>
     </div>
 </div>
 
 <!-- 添加自定义健康随访弹窗 -->
-<div id="add-health-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 class="text-sm font-medium text-text-secondary mb-3">添加自定义随访</h3>
+<div id="add-health-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="add-health-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="add-health-modal-title" class="app-modal-title mb-4">添加自定义随访</h3>
         <div class="space-y-3">
             <div>
-                <label class="text-text-muted text-xs mb-1 block">随访名称</label>
+                <label class="field-label" for="ah-name">随访名称</label>
                 <input type="text" id="ah-name" class="input-field" placeholder="如：血常规检查">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">完成日期</label>
+                <label class="field-label" for="ah-date">完成日期</label>
                 <input type="date" id="ah-date" class="input-field font-mono">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">备注</label>
+                <label class="field-label" for="ah-note">备注</label>
                 <input type="text" id="ah-note" class="input-field" placeholder="如：社区医院">
             </div>
         </div>
-        <div class="flex gap-2 mt-4">
-            <button class="btn-secondary flex-1 text-sm" onclick="closeAddHealthModal()">取消</button>
-            <button class="btn-primary flex-1 text-sm" onclick="saveCustomHealth()">确认</button>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeAddHealthModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="saveCustomHealth()">确认</button>
         </div>
     </div>
 </div>
 
 <!-- 健康随访-记录完成/编辑弹窗 -->
-<div id="health-record-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 id="health-record-modal-title" class="text-sm font-medium text-text-secondary mb-3">记录随访</h3>
+<div id="health-record-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="health-record-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="health-record-modal-title" class="app-modal-title mb-4">记录随访</h3>
         <input type="hidden" id="hrm-label">
         <input type="hidden" id="hrm-mode">
         <div class="space-y-3">
             <div>
-                <label class="text-text-muted text-xs mb-1 block">完成日期</label>
+                <label class="field-label" for="hrm-date">完成日期</label>
                 <input type="date" id="hrm-date" class="input-field font-mono">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">备注</label>
+                <label class="field-label" for="hrm-note">备注</label>
                 <input type="text" id="hrm-note" class="input-field" placeholder="可选">
             </div>
         </div>
         <div class="flex gap-2 mt-4">
-            <button id="hrm-delete-btn" class="text-xs px-2 py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors hidden" onclick="deleteHealthFromRecord()">删除记录</button>
+            <button type="button" id="hrm-delete-btn" class="btn-danger text-xs hidden" onclick="deleteHealthFromRecord()">删除记录</button>
             <div class="flex-1"></div>
-            <button class="btn-secondary text-sm" onclick="closeHealthRecordModal()">取消</button>
-            <button class="btn-primary text-sm" onclick="saveHealthRecord()">保存</button>
+            <button type="button" class="btn-secondary text-sm" onclick="closeHealthRecordModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="saveHealthRecord()">保存</button>
         </div>
     </div>
 </div>
 
 <!-- 健康随访-修改计划日期弹窗 -->
-<div id="health-plan-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 id="health-plan-modal-title" class="text-sm font-medium text-text-secondary mb-3">修改计划日期</h3>
+<div id="health-plan-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="health-plan-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="health-plan-modal-title" class="app-modal-title mb-4">修改计划日期</h3>
         <input type="hidden" id="hpm-label">
-        <div class="space-y-3">
-            <div>
-                <div class="flex items-center justify-between mb-1">
-                    <label class="text-text-muted text-xs">计划随访日期</label>
-                    <button class="text-[10px] text-accent hover:underline" onclick="saveHealthPlanDate()">修改计划日期</button>
-                </div>
-                <input type="date" id="hpm-date" class="input-field font-mono">
-            </div>
+        <div>
+            <label class="field-label" for="hpm-date">计划随访日期</label>
+            <input type="date" id="hpm-date" class="input-field font-mono">
         </div>
-        <div class="mt-4">
-            <button class="btn-primary w-full text-sm" onclick="healthPlanToRecord()">记录完成</button>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeHealthPlanModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="saveHealthPlanDate()">保存</button>
         </div>
-        <div class="mt-2">
-            <button class="btn-secondary w-full text-sm" onclick="closeHealthPlanModal()">取消</button>
-        </div>
+        <button type="button" class="btn-primary w-full text-sm mt-2" onclick="healthPlanToRecord()">记录完成</button>
     </div>
 </div>
 
 <!-- 倒数日弹窗 -->
-<div id="countdown-modal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-black/60">
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 id="countdown-modal-title" class="text-sm font-medium text-text-secondary mb-3">添加倒数日</h3>
+<div id="countdown-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="countdown-modal-title">
+    <div class="app-modal-panel">
+        <h3 id="countdown-modal-title" class="app-modal-title mb-4">添加倒数日</h3>
         <input type="hidden" id="cm-id">
         <div class="space-y-3">
             <div>
-                <label class="text-text-muted text-xs mb-1 block">标题</label>
+                <label class="field-label" for="cm-title">标题</label>
                 <input type="text" id="cm-title" class="input-field" placeholder="如：宝宝生日">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">目标日期</label>
+                <label class="field-label" for="cm-date">目标日期</label>
                 <input type="date" id="cm-date" class="input-field font-mono">
             </div>
             <div>
-                <label class="text-text-muted text-xs mb-1 block">备注</label>
+                <label class="field-label" for="cm-note">备注</label>
                 <input type="text" id="cm-note" class="input-field" placeholder="可选">
             </div>
         </div>
         <div class="flex gap-2 mt-4">
-            <button id="cm-delete-btn" class="text-xs px-2 py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors hidden" onclick="deleteCountdownFromModal()">删除</button>
+            <button type="button" id="cm-delete-btn" class="btn-danger text-xs hidden" onclick="deleteCountdownFromModal()">删除</button>
             <div class="flex-1"></div>
-            <button class="btn-secondary text-sm" onclick="closeCountdownModal()">取消</button>
-            <button class="btn-primary text-sm" onclick="saveCountdown()">保存</button>
+            <button type="button" class="btn-secondary text-sm" onclick="closeCountdownModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="saveCountdown()">保存</button>
         </div>
     </div>
 </div>

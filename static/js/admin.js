@@ -108,31 +108,33 @@ function renderUsers(users) {
         let actions = '';
         if (u.status === 'pending') {
             actions = `
-                <button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors" onclick="approveUser(${u.id})">批准</button>
-                <button class="text-xs px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors" onclick="rejectUser(${u.id})">拒绝</button>`;
+                <button type="button" class="btn-secondary user-action text-xs text-accent" onclick="approveUser(${u.id})">批准</button>
+                <button type="button" class="btn-secondary user-action text-xs text-red-400" onclick="rejectUser(${u.id})">拒绝</button>`;
         } else if (u.status === 'rejected') {
-            actions = `<button class="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/10 transition-colors" onclick="approveUser(${u.id})">重新批准</button>`;
+            actions = `<button type="button" class="btn-secondary user-action text-xs text-accent" onclick="approveUser(${u.id})">重新批准</button>`;
         }
+        actions += `<button type="button" class="btn-secondary user-action text-xs" data-rename-user="${u.id}" data-rename-name="${esc(u.username)}">改名</button>`;
+        actions += `<button type="button" class="btn-secondary user-action text-xs" data-reset-pw="${u.id}" data-reset-name="${esc(u.nickname || u.username)}">改密</button>`;
         if (u.role !== 'admin') {
-            actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors" data-reset-pw="${u.id}" data-reset-name="${esc(u.nickname || u.username)}">改密</button>`;
-            actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-blue-400 hover:border-blue-500/30 transition-colors" data-rename-user="${u.id}" data-rename-name="${esc(u.username)}">改名</button>`;
-            actions += ` <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-red-400 hover:border-red-500/30 transition-colors" onclick="deleteUser(${u.id})">删除</button>`;
+            actions += `<button type="button" class="btn-secondary user-action text-xs hover:text-red-400 hover:border-red-500/30" onclick="deleteUser(${u.id})">删除</button>`;
         }
 
         return `
-        <div class="flex items-center gap-3 py-2 px-3 rounded-lg bg-base border border-border">
-            <div class="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-accent text-xs font-bold flex-shrink-0">
-                ${esc((u.nickname || u.username || '?')[0])}
-            </div>
-            <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm text-text-primary">${esc(u.nickname || u.username)}</span>
-                    ${u.role === 'admin' ? '<span class="text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/30">管理员</span>' : ''}
-                    <span class="text-xs px-1.5 py-0.5 rounded border ${sc}">${sl}</span>
+        <div class="user-row rounded-lg bg-base border border-border">
+            <div class="user-summary">
+                <div class="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-accent text-xs font-bold flex-shrink-0">
+                    ${esc((u.nickname || u.username || '?')[0])}
                 </div>
-                <p class="text-xs text-text-muted">${esc(u.username)} · ${esc(u.created_at || '')}</p>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-sm text-text-primary truncate" title="${esc(u.nickname || u.username)}">${esc(u.nickname || u.username)}</span>
+                        ${u.role === 'admin' ? '<span class="text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/30 flex-shrink-0">管理员</span>' : ''}
+                        <span class="text-xs px-1.5 py-0.5 rounded border flex-shrink-0 ${sc}">${sl}</span>
+                    </div>
+                    <p class="text-xs text-text-muted truncate">${esc(u.username)} · ${esc(u.created_at || '')}</p>
+                </div>
             </div>
-            <div class="flex items-center gap-1 flex-shrink-0">${actions}</div>
+            <div class="user-actions">${actions}</div>
         </div>`;
     }).join('');
 }
@@ -176,7 +178,7 @@ function renderButtons(buttons) {
     }
 
     const typeLabels = { feed: '喂养', excrete: '排泄', symptom: '症状', supplement: '补充' };
-    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
+    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-emerald-400' };
 
     container.innerHTML = buttons.map((b, i) => `
         <div class="flex items-center gap-3 py-2 px-3 rounded-lg bg-base border border-border ${b.is_active ? '' : 'opacity-40'}">
@@ -246,9 +248,6 @@ let _editingButtonId = null;
 function showAddButtonModal() {
     _editingButtonId = null;
     const m = document.getElementById('add-btn-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
     document.getElementById('btn-modal-title').textContent = '添加快速记录按钮';
     document.getElementById('btn-modal-submit').textContent = '添加';
     document.getElementById('new-btn-type').value = 'feed';
@@ -262,6 +261,10 @@ function showAddButtonModal() {
     if (unitSel) unitSel.value = 'g';
     if (unitCustom) { unitCustom.value = ''; unitCustom.classList.add('hidden'); }
     updateSubTypes();
+    openAppModal(m, {
+        focusSelector: '#new-btn-type-trigger, #new-btn-type',
+        onDismiss: closeAddButtonModal,
+    });
 }
 
 function showEditButtonModal(id) {
@@ -269,9 +272,6 @@ function showEditButtonModal(id) {
     if (!btn) return;
     _editingButtonId = id;
     const m = document.getElementById('add-btn-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
     document.getElementById('btn-modal-title').textContent = '编辑快速记录按钮';
     document.getElementById('btn-modal-submit').textContent = '保存';
     document.getElementById('new-btn-type').value = btn.type;
@@ -295,13 +295,16 @@ function showEditButtonModal(id) {
     // 加载辅食单位
     _loadFoodUnitUI(btn.food_unit || '');
     _updateBtnAmountLabel();
+    openAppModal(m, {
+        focusSelector: '#new-btn-type-trigger, #new-btn-type',
+        onDismiss: closeAddButtonModal,
+    });
 }
 
 function closeAddButtonModal() {
     _editingButtonId = null;
     const m = document.getElementById('add-btn-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 function updateSubTypes() {
@@ -543,8 +546,8 @@ function renderLogs(logs) {
         '重置密码': 'text-amber-400',
         '清除数据': 'text-red-400',
         '导出CSV': 'text-text-secondary',
-        'HA快速记录': 'text-purple-400',
-        '生成HA密钥': 'text-purple-400',
+        'HA快速记录': 'text-emerald-400',
+        '生成HA密钥': 'text-emerald-400',
         '备份数据': 'text-blue-400',
         '恢复数据': 'text-amber-400',
     };
@@ -571,16 +574,16 @@ function backupExport() {
 
 function showRestoreModal() {
     const m = document.getElementById('restore-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
     document.getElementById('restore-file').value = '';
-    if (typeof fabClose === 'function') fabClose();
+    openAppModal(m, {
+        focusSelector: '#restore-file-trigger, #restore-file',
+        onDismiss: closeRestoreModal,
+    });
 }
 
 function closeRestoreModal() {
     const m = document.getElementById('restore-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 async function backupRestore() {
@@ -638,31 +641,39 @@ function showResetPasswordModal(userId, userName) {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'reset-pw-modal';
-        modal.className = 'fixed inset-0 z-[90] hidden items-center justify-center bg-black/60';
+        modal.className = 'app-modal hidden items-center justify-center';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'reset-pw-modal-title');
         document.body.appendChild(modal);
     }
     modal.innerHTML = `
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 class="text-sm font-medium text-text-secondary mb-3">修改管理密码 - ${esc(userName)}</h3>
-        <input type="password" id="reset-pw-input" class="input-field font-mono" placeholder="输入新密码（8-128位）" autocomplete="new-password">
-        <input type="password" id="reset-pw-confirm" class="input-field font-mono mt-2" placeholder="再次输入新密码" autocomplete="new-password">
-        <div class="flex gap-2 mt-4">
-            <button class="btn-secondary flex-1 text-sm" onclick="closeResetPasswordModal()">取消</button>
-            <button class="btn-primary flex-1 text-sm" onclick="resetPassword()">确认</button>
+    <div class="app-modal-panel">
+        <h3 id="reset-pw-modal-title" class="app-modal-title mb-4">修改密码 - ${esc(userName)}</h3>
+        <div class="space-y-3">
+            <div>
+                <label class="field-label" for="reset-pw-input">新密码</label>
+                <input type="password" id="reset-pw-input" class="input-field font-mono" placeholder="输入新密码（8-128位）" autocomplete="new-password">
+            </div>
+            <div>
+                <label class="field-label" for="reset-pw-confirm">确认密码</label>
+                <input type="password" id="reset-pw-confirm" class="input-field font-mono" placeholder="再次输入新密码" autocomplete="new-password">
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeResetPasswordModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="resetPassword()">确认</button>
         </div>
     </div>`;
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
-    document.getElementById('reset-pw-input').focus();
+    openAppModal(modal, {
+        focusSelector: '#reset-pw-input',
+        onDismiss: closeResetPasswordModal,
+    });
 }
 
 function closeResetPasswordModal() {
     const modal = document.getElementById('reset-pw-modal');
-    if (modal) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }
+    closeAppModal(modal);
     _resetUserId = null;
 }
 
@@ -698,33 +709,35 @@ function showRenameUserModal(userId, currentName) {
     if (!modal) {
         modal = document.createElement('div');
         modal.id = 'rename-user-modal';
-        modal.className = 'fixed inset-0 z-[90] hidden items-center justify-center bg-black/60';
+        modal.className = 'app-modal hidden items-center justify-center';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'rename-user-modal-title');
         document.body.appendChild(modal);
     }
     modal.innerHTML = `
-    <div class="bg-surface border border-border rounded-xl p-6 w-80 max-w-[90vw]">
-        <h3 class="text-sm font-medium text-text-secondary mb-3">修改登录名</h3>
-        <input type="text" id="rename-user-input" class="input-field font-mono" placeholder="输入新登录名（至少2位）" value="${esc(currentName)}">
-        <p class="text-[10px] text-text-muted mt-1">当前: ${esc(currentName)}</p>
-        <div class="flex gap-2 mt-4">
-            <button class="btn-secondary flex-1 text-sm" onclick="closeRenameUserModal()">取消</button>
-            <button class="btn-primary flex-1 text-sm" onclick="renameUser()">确认</button>
+    <div class="app-modal-panel">
+        <h3 id="rename-user-modal-title" class="app-modal-title mb-4">修改登录名</h3>
+        <div>
+            <label class="field-label" for="rename-user-input">新登录名</label>
+            <input type="text" id="rename-user-input" class="input-field font-mono" placeholder="输入新登录名（至少2位）" value="${esc(currentName)}">
+            <p class="page-meta text-text-muted mt-1">当前：${esc(currentName)}</p>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn-secondary text-sm" onclick="closeRenameUserModal()">取消</button>
+            <button type="button" class="btn-primary text-sm" onclick="renameUser()">确认</button>
         </div>
     </div>`;
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
-    const input = document.getElementById('rename-user-input');
-    input.focus();
-    input.select();
+    openAppModal(modal, {
+        focusSelector: '#rename-user-input',
+        onDismiss: closeRenameUserModal,
+    });
+    requestAnimationFrame(() => document.getElementById('rename-user-input')?.select());
 }
 
 function closeRenameUserModal() {
     const modal = document.getElementById('rename-user-modal');
-    if (modal) {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-    }
+    closeAppModal(modal);
     _renameUserId = null;
 }
 
@@ -734,11 +747,18 @@ async function renameUser() {
         showToast('用户名至少2个字符');
         return;
     }
+    const renamedUserId = _renameUserId;
     try {
-        await api(`/api/users/${_renameUserId}/username`, {
+        const result = await api(`/api/users/${renamedUserId}/username`, {
             method: 'PUT',
             body: JSON.stringify({ username: newName })
         });
+        const currentAdminButton = document.querySelector('[data-change-admin-pw]');
+        if (currentAdminButton && Number(currentAdminButton.dataset.adminId) === renamedUserId) {
+            const currentAdminName = document.getElementById('admin-account-name');
+            if (currentAdminName) currentAdminName.textContent = result.username || newName;
+            currentAdminButton.dataset.adminName = result.username || newName;
+        }
         showToast('用户名已更新');
         closeRenameUserModal();
         loadUsers();
@@ -776,7 +796,7 @@ function renderHaButtonChecks() {
         return;
     }
     const typeLabels = { feed: '喂养', excrete: '排泄', symptom: '症状', supplement: '补充' };
-    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
+    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-emerald-400' };
     container.innerHTML = _haButtons.map(b => `
         <label class="flex items-center gap-2 py-1 cursor-pointer">
             <input type="checkbox" class="ha-entity accent-accent" data-type="switch" data-id="${b.id}" data-label="${esc(b.label)}" checked>

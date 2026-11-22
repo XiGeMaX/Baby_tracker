@@ -3,14 +3,14 @@
 {% block title %}总览 - Baby Tracker{% endblock %}
 
 {% block content %}
-<div class="space-y-5 fade-in pb-20 md:pb-0">
+<div class="app-page space-y-5 fade-in pb-20 md:pb-0">
     <!-- 页头 -->
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-xl font-semibold">总览</h1>
-            <p class="text-text-muted text-sm mt-0.5 font-mono" id="today-date"></p>
+    <div class="page-header flex items-center justify-between">
+        <div class="page-heading">
+            <h1 class="page-title text-xl font-semibold">总览</h1>
+            <p class="page-subtitle page-meta text-text-muted text-sm mt-0.5 font-mono" id="today-date"></p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="page-actions flex items-center gap-2">
             {% if not current_user %}
             <a href="/login" class="btn-primary flex items-center gap-2 text-sm">
                 <i data-lucide="log-in" class="w-4 h-4"></i>
@@ -94,7 +94,7 @@
     <!-- 快速记录按钮（仅登录用户可见） -->
     {% if current_user and current_user.status == 'approved' %}
     <div>
-        <h2 class="text-sm font-medium text-text-secondary mb-3">快速记录</h2>
+        <h2 class="section-title text-sm font-medium text-text-secondary mb-3">快速记录</h2>
         <div id="quick-buttons" class="grid grid-cols-3 md:grid-cols-4 gap-2">
             <p class="text-text-muted text-sm col-span-full text-center py-4">加载中...</p>
         </div>
@@ -104,7 +104,7 @@
     <!-- 最近记录 -->
     <div>
         <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-medium text-text-secondary">最近记录</h2>
+            <h2 class="section-title text-sm font-medium text-text-secondary">最近记录</h2>
             <a href="/vaccine" class="text-xs text-text-muted hover:text-accent transition-colors">全部日程</a>
         </div>
         <div class="space-y-2" id="recent-records">

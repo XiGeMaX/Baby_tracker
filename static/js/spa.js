@@ -21,6 +21,10 @@ const SpaRouter = {
 
     init() {
         this._currentPage = this._routePath(location.pathname);
+        document.querySelectorAll('[data-page-script]').forEach(script => {
+            const src = script.getAttribute('src') || script.dataset.pageScript;
+            if (src) this._loadedScripts.add(src);
+        });
         window.addEventListener('popstate', () => this._onPopState());
         document.addEventListener('click', e => this._onClick(e));
     },

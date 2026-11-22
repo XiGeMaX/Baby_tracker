@@ -82,13 +82,13 @@ function renderQuickButtons(buttons) {
     container.dataset.buttonsSignature = signature;
 
     const typeIcons = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
-    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
-    const typeBorders = { feed: 'border-blue-500/20', excrete: 'border-amber-500/20', symptom: 'border-red-500/20', supplement: 'border-purple-500/20' };
+    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-emerald-400' };
+    const typeBorders = { feed: 'border-blue-500/20', excrete: 'border-amber-500/20', symptom: 'border-red-500/20', supplement: 'border-emerald-500/20' };
 
     let html = '';
     for (const btn of buttons) {
         html += `
-        <button type="button" class="quick-btn flex flex-col items-center gap-1 p-3 rounded-xl border ${typeBorders[btn.type]} bg-surface hover:bg-white/5 active:scale-95 transition-all duration-150 cursor-pointer"
+        <button type="button" class="quick-btn flex flex-col items-center gap-1 p-3 border ${typeBorders[btn.type]} bg-surface cursor-pointer"
                 data-btn-id="${btn.id}" data-btn-label="${esc(btn.label)}">
             <i data-lucide="${typeIcons[btn.type]}" class="w-5 h-5 ${typeColors[btn.type]}"></i>
             <span class="text-xs text-text-secondary">${esc(btn.label)}</span>
@@ -141,9 +141,9 @@ function renderRecentRecords(records) {
     container.innerHTML = records.map(r => {
         const badgeMap = { feed: 'badge-feed', excrete: 'badge-excrete', symptom: 'badge-symptom', supplement: 'badge-supplement' };
         const typeClass = badgeMap[r.type] || 'badge-symptom';
-        const bgMap = { feed: 'bg-blue-500/10', excrete: 'bg-amber-500/10', symptom: 'bg-red-500/10', supplement: 'bg-purple-500/10' };
+        const bgMap = { feed: 'bg-blue-500/10', excrete: 'bg-amber-500/10', symptom: 'bg-red-500/10', supplement: 'bg-emerald-500/10' };
         const iconMap = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
-        const colorMap = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
+        const colorMap = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-emerald-400' };
         const detail = buildRecordDetail(r);
 
         return `

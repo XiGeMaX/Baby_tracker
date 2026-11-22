@@ -294,7 +294,7 @@ function renderOverview() {
             <span class="text-xs font-mono text-accent">${ov.done_count}/${ov.total_doses}</span>
         </div>
         <div class="w-full h-2 bg-border rounded-full overflow-hidden">
-            <div class="h-full bg-accent rounded-full transition-all duration-500" style="width:${pct}%"></div>
+            <div class="h-full bg-accent rounded-full progress-bar-fill" style="width:${pct}%"></div>
         </div>
         <div class="flex justify-between mt-1">
             <span class="text-[10px] text-red-400">${ov.overdue_count > 0 ? ov.overdue_count + '剂逾期' : ''}</span>
@@ -401,9 +401,10 @@ function showPlanDateModal(name, doseIndex, dueDate, isCustom) {
     document.getElementById('pdm-date').value = dueDate || new Date().toISOString().slice(0, 10);
     document.getElementById('plan-date-modal-title').textContent = `${name} 第${doseIndex}剂`;
     const m = document.getElementById('plan-date-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
+    openAppModal(m, {
+        focusSelector: '#pdm-date-trigger, #pdm-date',
+        onDismiss: closePlanDateModal,
+    });
 }
 
 async function deleteVaccinePlan() {
@@ -425,8 +426,7 @@ async function deleteVaccinePlan() {
 
 function closePlanDateModal() {
     const m = document.getElementById('plan-date-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 async function savePlanDate() {
@@ -462,15 +462,15 @@ function showVaccineModal(name, doseIndex, dueDate) {
     document.getElementById('vm-note').value = '';
     document.getElementById('vaccine-modal-title').textContent = `${name} 第${doseIndex}剂`;
     const m = document.getElementById('vaccine-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
+    openAppModal(m, {
+        focusSelector: '#vm-date-trigger, #vm-date',
+        onDismiss: closeVaccineModal,
+    });
 }
 
 function closeVaccineModal() {
     const m = document.getElementById('vaccine-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 async function saveVaccineRecord() {
@@ -515,15 +515,15 @@ function showEditVaccineModal(name, doseIndex, vaccinatedDate, note) {
     document.getElementById('evm-note').value = note || '';
     document.getElementById('edit-vaccine-modal-title').textContent = `${name} 第${doseIndex}剂`;
     const m = document.getElementById('edit-vaccine-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
+    openAppModal(m, {
+        focusSelector: '#evm-date-trigger, #evm-date',
+        onDismiss: closeEditVaccineModal,
+    });
 }
 
 function closeEditVaccineModal() {
     const m = document.getElementById('edit-vaccine-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 async function updateVaccineRecord() {
@@ -568,16 +568,15 @@ function showAddVaccineModal() {
     _doseCounter = 0;
     addDoseRow();
     const m = document.getElementById('add-vaccine-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
-    document.getElementById('av-name').focus();
+    openAppModal(m, {
+        focusSelector: '#av-name',
+        onDismiss: closeAddVaccineModal,
+    });
 }
 
 function closeAddVaccineModal() {
     const m = document.getElementById('add-vaccine-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 function addDoseRow() {
@@ -586,10 +585,10 @@ function addDoseRow() {
     const row = document.createElement('div');
     row.className = 'flex items-center gap-2 dose-row';
     row.innerHTML = `
-        <span class="text-xs text-text-muted w-10 flex-shrink-0">第${_doseCounter}剂</span>
-        <input type="date" class="input-field font-mono flex-1 text-xs" value="${new Date().toISOString().slice(0, 10)}">
-        <input type="text" class="input-field flex-1 text-xs" placeholder="备注">
-        ${_doseCounter > 1 ? `<button onclick="removeDoseRow(this)" class="text-text-muted hover:text-red-400 transition-colors flex-shrink-0 p-1"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>` : ''}
+        <span class="dose-row-index text-text-muted w-10 flex-shrink-0">第${_doseCounter}剂</span>
+        <input type="date" class="input-field font-mono flex-1" value="${new Date().toISOString().slice(0, 10)}" aria-label="第${_doseCounter}剂计划日期">
+        <input type="text" class="input-field flex-1" placeholder="备注" aria-label="第${_doseCounter}剂备注">
+        ${_doseCounter > 1 ? `<button type="button" onclick="removeDoseRow(this)" class="text-text-muted hover:text-red-400 transition-colors flex-shrink-0 p-1" aria-label="删除第${_doseCounter}剂"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>` : ''}
     `;
     container.appendChild(row);
     lucide.createIcons();
@@ -635,16 +634,15 @@ function showAddHealthModal() {
     document.getElementById('ah-date').value = new Date().toISOString().slice(0, 10);
     document.getElementById('ah-note').value = '';
     const m = document.getElementById('add-health-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
-    document.getElementById('ah-name').focus();
+    openAppModal(m, {
+        focusSelector: '#ah-name',
+        onDismiss: closeAddHealthModal,
+    });
 }
 
 function closeAddHealthModal() {
     const m = document.getElementById('add-health-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 async function saveCustomHealth() {
@@ -753,7 +751,7 @@ function renderHealthOverview() {
             <span class="text-xs font-mono text-accent">${ov.done_count}/${ov.total}</span>
         </div>
         <div class="w-full h-2 bg-border rounded-full overflow-hidden">
-            <div class="h-full bg-accent rounded-full transition-all duration-500" style="width:${pct}%"></div>
+            <div class="h-full bg-accent rounded-full progress-bar-fill" style="width:${pct}%"></div>
         </div>
         <div class="flex justify-between mt-1">
             <span class="text-[10px] text-red-400">${ov.overdue_count > 0 ? ov.overdue_count + '项逾期' : ''}</span>
@@ -841,15 +839,15 @@ function showHealthPlanModal(label, dueDate) {
     document.getElementById('hpm-date').value = dueDate || getLocalDate();
     document.getElementById('health-plan-modal-title').textContent = label;
     const m = document.getElementById('health-plan-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
+    openAppModal(m, {
+        focusSelector: '#hpm-date-trigger, #hpm-date',
+        onDismiss: closeHealthPlanModal,
+    });
 }
 
 function closeHealthPlanModal() {
     const m = document.getElementById('health-plan-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 async function saveHealthPlanDate() {
@@ -884,15 +882,15 @@ function showHealthRecordModal(label, mode, date, note) {
     document.getElementById('health-record-modal-title').textContent = mode === 'edit' ? '编辑随访记录' : '记录随访';
     document.getElementById('hrm-delete-btn').classList.toggle('hidden', mode !== 'edit');
     const m = document.getElementById('health-record-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
+    openAppModal(m, {
+        focusSelector: '#hrm-date-trigger, #hrm-date',
+        onDismiss: closeHealthRecordModal,
+    });
 }
 
 function closeHealthRecordModal() {
     const m = document.getElementById('health-record-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 async function saveHealthRecord() {
@@ -1013,16 +1011,15 @@ function showCountdownModal(item) {
     document.getElementById('countdown-modal-title').textContent = isEdit ? '编辑倒数日' : '添加倒数日';
     document.getElementById('cm-delete-btn').classList.toggle('hidden', !isEdit);
     const m = document.getElementById('countdown-modal');
-    m.classList.remove('hidden');
-    m.classList.add('flex');
-    if (typeof fabClose === 'function') fabClose();
-    if (!isEdit) document.getElementById('cm-title').focus();
+    openAppModal(m, {
+        focusSelector: '#cm-title',
+        onDismiss: closeCountdownModal,
+    });
 }
 
 function closeCountdownModal() {
     const m = document.getElementById('countdown-modal');
-    m.classList.add('hidden');
-    m.classList.remove('flex');
+    closeAppModal(m);
 }
 
 async function saveCountdown() {
@@ -1299,9 +1296,9 @@ function renderRecords(records, vaccineData, healthData, countdownList, dateStr)
         records.forEach(r => {
             const badgeMap = { feed: 'badge-feed', excrete: 'badge-excrete', symptom: 'badge-symptom', supplement: 'badge-supplement' };
             const typeClass = badgeMap[r.type] || 'badge-symptom';
-            const bgMap = { feed: 'bg-blue-500/10', excrete: 'bg-amber-500/10', symptom: 'bg-red-500/10', supplement: 'bg-purple-500/10' };
+            const bgMap = { feed: 'bg-blue-500/10', excrete: 'bg-amber-500/10', symptom: 'bg-red-500/10', supplement: 'bg-emerald-500/10' };
             const iconMap = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
-            const colorMap = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-purple-400' };
+            const colorMap = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-emerald-400' };
 
             let detail = '';
             if (r.amount) {
