@@ -164,7 +164,7 @@ func ensureParentDir(path string) error {
 	return mkdirAll(dir)
 }
 
-func (a *App) initDatabase(ctx context.Context) error {
+func (a *App) initDatabase(ctx context.Context, newDatabase bool) error {
 	if _, err := a.db.ExecContext(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("create schema: %w", err)
 	}
@@ -259,12 +259,26 @@ func (a *App) initDatabase(ctx context.Context) error {
 		return fmt.Errorf("count admins: %w", err)
 	}
 	if adminCount == 0 {
-		_, err := a.db.ExecContext(ctx,
-			"INSERT INTO users (username, password_hash, nickname, role, status) VALUES ('admin', ?, '管理员', 'admin', 'approved')",
-			hashPassword("admin123"),
-		)
+		if newDatabase {
+			_, err := a.db.ExecContext(ctx,
+				"INSERT INTO users (username, password_hash, nickname, role, status) VALUES ('admin', ?, '管理员', 'admin', 'approved')",
+				hashPassword("admin123"),
+			)
+			if err != nil {
+				return fmt.Errorf("insert default admin: %w", err)
+			}
+		}
+	} else if !newDatabase {
+		var passwordHash string
+		err := a.db.QueryRowContext(ctx,
+			"SELECT password_hash FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").Scan(&passwordHash)
 		if err != nil {
-			return fmt.Errorf("insert default admin: %w", err)
+			return fmt.Errorf("inspect existing admin: %w", err)
+		}
+		if !checkPassword(passwordHash, "admin123") {
+			if err := a.markAdminPasswordInitialized(ctx); err != nil {
+				return fmt.Errorf("mark migrated admin password initialized: %w", err)
+			}
 		}
 	}
 	return nil

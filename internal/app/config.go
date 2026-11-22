@@ -10,11 +10,12 @@ const defaultListenAddress = "0.0.0.0:5000"
 
 // Config contains the runtime paths and listener settings used by the server.
 type Config struct {
-	DataDir       string
-	WebDir        string
-	ListenAddress string
-	BasePath      string
-	SessionSecret string
+	DataDir        string
+	LegacyDataDirs []string
+	WebDir         string
+	ListenAddress  string
+	BasePath       string
+	SessionSecret  string
 }
 
 // LoadConfig reads the service configuration from environment variables.
@@ -26,6 +27,10 @@ func LoadConfig() Config {
 	dataDir := strings.TrimSpace(os.Getenv("BABY_TRACKER_DATA_DIR"))
 	if dataDir == "" {
 		dataDir = filepath.Join(".", "data")
+	}
+	var legacyDataDirs []string
+	if legacyDataDir := strings.TrimSpace(os.Getenv("BABY_TRACKER_LEGACY_DATA_DIR")); legacyDataDir != "" {
+		legacyDataDirs = append(legacyDataDirs, legacyDataDir)
 	}
 	listenAddress := strings.TrimSpace(os.Getenv("BABY_TRACKER_LISTEN_ADDRESS"))
 	if listenAddress == "" {
@@ -41,10 +46,11 @@ func LoadConfig() Config {
 	}
 
 	return Config{
-		DataDir:       dataDir,
-		WebDir:        webDir,
-		ListenAddress: listenAddress,
-		BasePath:      strings.TrimRight(basePath, "/"),
-		SessionSecret: strings.TrimSpace(os.Getenv("SECRET_KEY")),
+		DataDir:        dataDir,
+		LegacyDataDirs: legacyDataDirs,
+		WebDir:         webDir,
+		ListenAddress:  listenAddress,
+		BasePath:       strings.TrimRight(basePath, "/"),
+		SessionSecret:  strings.TrimSpace(os.Getenv("SECRET_KEY")),
 	}
 }

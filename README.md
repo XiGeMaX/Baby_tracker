@@ -79,6 +79,8 @@ docker run -d --name baby-tracker -p 8964:5000 \
   baby-tracker
 ```
 
+从旧版镜像升级且仍使用 `./data:/app/data` 挂载时无需修改 compose。镜像会优先识别旧目录中的 `baby.db`，修正挂载目录权限后再以非 root 用户启动。如果同时发现两个都已有业务数据的数据库，服务会停止并提示使用 `BABY_TRACKER_DATA_DIR` 明确选择，避免覆盖或误建管理员。
+
 ## Go 本地运行
 
 要求 Go 1.26.11 或兼容的新版本。
@@ -113,6 +115,7 @@ make build
 | --- | --- | --- |
 | `SECRET_KEY` | 自动生成并保存到数据目录 | 会话签名密钥，生产环境建议显式设置随机值 |
 | `BABY_TRACKER_DATA_DIR` | `./data` | SQLite 和运行时数据目录 |
+| `BABY_TRACKER_LEGACY_DATA_DIR` | 镜像内为 `/app/data` | 旧版 Docker 数据目录；仅在新目录没有可恢复数据时作为兼容路径 |
 | `BABY_TRACKER_WEB_DIR` | `.` | 包含 `templates/` 和 `static/` 的目录 |
 | `BABY_TRACKER_LISTEN_ADDRESS` | `0.0.0.0:5000` | HTTP 监听地址 |
 | `PORT` | 未设置 | `BABY_TRACKER_LISTEN_ADDRESS` 未设置时可用于平台部署 |

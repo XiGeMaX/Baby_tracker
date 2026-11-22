@@ -29,6 +29,8 @@ command -v node >/dev/null || {
     exit 1
 }
 
+sh -n docker-entrypoint.sh
+
 unformatted="$(gofmt -l cmd internal)"
 if [[ -n "${unformatted}" ]]; then
     echo "error: Go files need formatting:" >&2

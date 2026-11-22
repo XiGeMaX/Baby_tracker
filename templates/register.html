@@ -23,7 +23,7 @@
         </div>
         <div>
             <label class="field-label text-text-muted text-xs mb-1 block" for="reg-password">密码</label>
-            <input type="password" id="reg-password" class="input-field font-mono" placeholder="至少6个字符" autocomplete="new-password">
+            <input type="password" id="reg-password" class="input-field font-mono" placeholder="请输入 6-128 位密码" autocomplete="new-password" minlength="6" maxlength="128">
         </div>
         <div id="reg-error" class="form-error text-red-400 text-xs hidden" role="alert"></div>
         <button class="btn-primary w-full" onclick="doRegister()">注册</button>
@@ -46,6 +46,11 @@ async function doRegister() {
 
     if (!username || !password) {
         errEl.textContent = '请填写用户名和密码';
+        errEl.classList.remove('hidden');
+        return;
+    }
+    if (password.length < 6 || password.length > 128) {
+        errEl.textContent = '密码长度应为 6-128 位';
         errEl.classList.remove('hidden');
         return;
     }

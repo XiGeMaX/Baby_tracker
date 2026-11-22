@@ -76,8 +76,8 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "用户名至少3个字符")
 		return
 	}
-	if len([]rune(input.Password)) < 6 {
-		writeError(w, http.StatusBadRequest, "密码至少6个字符")
+	if !isPasswordLengthValid(input.Password) {
+		writeError(w, http.StatusBadRequest, passwordLengthError)
 		return
 	}
 	if _, err := a.queryOne(r.Context(), "SELECT id FROM users WHERE username = ?", input.Username); err == nil {
@@ -150,8 +150,8 @@ func (a *App) setupAdminPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "请输入管理密码")
 		return
 	}
-	if len([]rune(input.Password)) < 8 || len([]rune(input.Password)) > 128 {
-		writeError(w, http.StatusBadRequest, "管理密码长度应为 8-128 位")
+	if !isPasswordLengthValid(input.Password) {
+		writeError(w, http.StatusBadRequest, adminPasswordLengthErr)
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(input.Password), []byte(input.ConfirmPassword)) != 1 {

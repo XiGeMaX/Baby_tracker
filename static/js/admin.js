@@ -514,7 +514,6 @@ async function loadStats() {
         document.getElementById('stat-feeds').textContent = stats.total_feeds;
         document.getElementById('stat-ml').textContent = stats.total_ml;
         document.getElementById('stat-days').textContent = stats.tracked_days;
-        document.getElementById('stat-pending').textContent = stats.pending_users;
     } catch (e) { /* ignore */ }
 }
 
@@ -660,11 +659,11 @@ function showResetPasswordModal(userId, userName) {
         <div class="space-y-3">
             <div>
                 <label class="field-label" for="reset-pw-input">新密码</label>
-                <input type="password" id="reset-pw-input" class="input-field font-mono" placeholder="输入新密码（8-128位）" autocomplete="new-password">
+                <input type="password" id="reset-pw-input" class="input-field font-mono" placeholder="输入新密码（6-128位）" autocomplete="new-password" minlength="6" maxlength="128">
             </div>
             <div>
                 <label class="field-label" for="reset-pw-confirm">确认密码</label>
-                <input type="password" id="reset-pw-confirm" class="input-field font-mono" placeholder="再次输入新密码" autocomplete="new-password">
+                <input type="password" id="reset-pw-confirm" class="input-field font-mono" placeholder="再次输入新密码" autocomplete="new-password" minlength="6" maxlength="128">
             </div>
         </div>
         <div class="modal-actions">
@@ -687,8 +686,8 @@ function closeResetPasswordModal() {
 async function resetPassword() {
     const pw = document.getElementById('reset-pw-input').value;
     const confirmation = document.getElementById('reset-pw-confirm').value;
-    if (pw.length < 8 || pw.length > 128) {
-        showToast('密码长度应为 8-128 位');
+    if (pw.length < 6 || pw.length > 128) {
+        showToast('密码长度应为 6-128 位');
         return;
     }
     if (pw !== confirmation) {

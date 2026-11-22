@@ -262,8 +262,8 @@ func (a *App) resetUserPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	password := strings.TrimSpace(input.Password)
-	if len([]rune(password)) < 8 || len([]rune(password)) > 128 {
-		writeError(w, http.StatusBadRequest, "密码长度应为 8-128 位")
+	if !isPasswordLengthValid(password) {
+		writeError(w, http.StatusBadRequest, passwordLengthError)
 		return
 	}
 	id := pathID(r)

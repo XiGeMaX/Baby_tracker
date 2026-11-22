@@ -15,6 +15,7 @@ import (
 func TestGrowthLogMigrationPreservesWeightsAndAllowsHeightOnly(t *testing.T) {
 	dataDir := t.TempDir()
 	databasePath := filepath.Join(dataDir, "baby.db")
+	createUserDatabase(t, dataDir, "admin", hashPassword("admin123"))
 	legacy, err := sql.Open("sqlite", databasePath)
 	if err != nil {
 		t.Fatal(err)

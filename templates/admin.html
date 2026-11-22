@@ -284,30 +284,26 @@
             </summary>
             <div id="data-management-panel" class="admin-details-panel">
                 <div class="admin-details-panel-inner admin-details-content">
-                    <div class="space-y-4">
-                        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                                <p class="counter-value text-lg text-text-primary" id="stat-records">0</p>
-                                <p class="text-text-muted text-xs">总记录</p>
+                    <div class="admin-data-panel">
+                        <dl class="admin-data-metrics" aria-label="数据统计">
+                            <div class="admin-data-metric">
+                                <dt class="admin-data-label">总记录</dt>
+                                <dd class="admin-data-value" id="stat-records">0</dd>
                             </div>
-                            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                                <p class="counter-value text-lg text-text-primary" id="stat-feeds">0</p>
-                                <p class="text-text-muted text-xs">喂养</p>
+                            <div class="admin-data-metric">
+                                <dt class="admin-data-label">喂养</dt>
+                                <dd class="admin-data-value" id="stat-feeds">0</dd>
                             </div>
-                            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                                <p class="counter-value text-lg text-text-primary" id="stat-ml">0</p>
-                                <p class="text-text-muted text-xs">总奶量</p>
+                            <div class="admin-data-metric">
+                                <dt class="admin-data-label">总奶量</dt>
+                                <dd class="admin-data-value" id="stat-ml">0</dd>
                             </div>
-                            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                                <p class="counter-value text-lg text-text-primary" id="stat-days">0</p>
-                                <p class="text-text-muted text-xs">天数</p>
+                            <div class="admin-data-metric">
+                                <dt class="admin-data-label">天数</dt>
+                                <dd class="admin-data-value" id="stat-days">0</dd>
                             </div>
-                            <div class="bg-base rounded-lg p-3 border border-border text-center">
-                                <p class="counter-value text-lg text-amber-400" id="stat-pending">0</p>
-                                <p class="text-text-muted text-xs">待审批</p>
-                            </div>
-                        </div>
-                        <div class="flex gap-3 flex-wrap">
+                        </dl>
+                        <div class="admin-data-actions" role="group" aria-label="数据操作">
                             <button class="btn-secondary text-sm flex items-center gap-2" onclick="exportCSV()">
                                 <i data-lucide="download" class="w-4 h-4"></i> 导出 CSV
                             </button>

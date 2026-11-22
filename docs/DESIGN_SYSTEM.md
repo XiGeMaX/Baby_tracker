@@ -33,6 +33,8 @@
 - 页面说明使用 `page-subtitle`，日期或范围元数据额外使用 `page-meta`。
 - 右侧操作统一放入 `page-actions`。移动端允许换行，但不得挤压或覆盖标题。
 - 卡片使用 `card` 或已有的语义卡片类。卡片内部只再分区块，不把卡片嵌套在卡片中作为装饰。
+- 管理页的数据概览使用 `admin-data-metrics` 作为单一统计条；指标之间只用分隔线区分，不拆成多张带边框的小卡片。
+- 数据相关操作使用 `admin-data-actions` 排列，桌面端等宽四列、移动端等宽两列。危险操作固定在操作组末尾，不单独放大或改变控件形状。
 
 认证页沿用 `page-title`、`page-subtitle`、`card`、`field-label` 和 `input-field`，不建立独立的字号体系。
 
@@ -96,6 +98,7 @@
 - 过滤项使用 `filter-pill`，选中状态不得只依赖颜色，应同时提供文字状态或 `aria-pressed`。
 - 状态标签使用现有 `badge-*` 或 `admin-status-pill` 语义类。
 - 数值、日期、版本使用 `font-mono` 或 `page-meta`，保持等宽数字。
+- 数据统计条内的数值使用 `admin-data-value`，标签使用 `admin-data-label`；不得在业务模板中另写字号、字重或等宽字体。
 
 ## 9. 对话框
 

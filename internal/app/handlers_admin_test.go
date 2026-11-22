@@ -69,8 +69,16 @@ func TestResetPasswordAllowsAdminAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	shortRequest := httptest.NewRequest(http.MethodPut, "/api/users/"+strconv.FormatInt(userID(admin), 10)+"/password",
+		strings.NewReader(`{"password":"12345"}`))
+	shortRequest.Header.Set("Content-Type", "application/json")
+	shortResponse := performRequest(application, shortRequest, cookie)
+	if shortResponse.Code != http.StatusBadRequest {
+		t.Fatalf("short password status = %d, want %d", shortResponse.Code, http.StatusBadRequest)
+	}
+
 	request := httptest.NewRequest(http.MethodPut, "/api/users/"+strconv.FormatInt(userID(admin), 10)+"/password",
-		strings.NewReader(`{"password":"new-admin-password"}`))
+		strings.NewReader(`{"password":"123456"}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := performRequest(application, request, cookie)
 	if response.Code != http.StatusOK {
@@ -80,7 +88,7 @@ func TestResetPasswordAllowsAdminAccount(t *testing.T) {
 	if response := attemptLogin(t, application, "admin", "admin123"); response.Code != http.StatusUnauthorized {
 		t.Fatalf("old password login status = %d, want %d", response.Code, http.StatusUnauthorized)
 	}
-	if response := attemptLogin(t, application, "admin", "new-admin-password"); response.Code != http.StatusOK {
+	if response := attemptLogin(t, application, "admin", "123456"); response.Code != http.StatusOK {
 		t.Fatalf("new password login status = %d, body = %s", response.Code, response.Body.String())
 	}
 }

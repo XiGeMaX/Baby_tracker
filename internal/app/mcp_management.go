@@ -1363,7 +1363,7 @@ type mcpManageUsersInput struct {
 	Action      string `json:"action" jsonschema:"操作：approve、reject、delete、rename 或 reset_password"`
 	UserID      int64  `json:"user_id" jsonschema:"用户 ID"`
 	Username    string `json:"username,omitempty" jsonschema:"rename 时的新用户名"`
-	NewPassword string `json:"new_password,omitempty" jsonschema:"reset_password 时的新密码，长度 8-128"`
+	NewPassword string `json:"new_password,omitempty" jsonschema:"reset_password 时的新密码，长度 6-128"`
 }
 
 func (a *App) mcpManageUsers(ctx context.Context, _ *mcp.CallToolRequest, input mcpManageUsersInput) (*mcp.CallToolResult, mcpMutationOutput, error) {
@@ -1431,8 +1431,8 @@ func (a *App) mcpManageUsers(ctx context.Context, _ *mcp.CallToolRequest, input 
 		return nil, mcpMutationOutput{Message: "用户名已更新"}, nil
 	case "reset_password":
 		password := strings.TrimSpace(input.NewPassword)
-		if len([]rune(password)) < 8 || len([]rune(password)) > 128 {
-			return nil, mcpMutationOutput{}, fmt.Errorf("密码长度应为 8-128 位")
+		if !isPasswordLengthValid(password) {
+			return nil, mcpMutationOutput{}, fmt.Errorf(passwordLengthError)
 		}
 		if _, err := a.db.ExecContext(ctx,
 			"UPDATE users SET password_hash = ? WHERE id = ?", hashPassword(password), input.UserID); err != nil {

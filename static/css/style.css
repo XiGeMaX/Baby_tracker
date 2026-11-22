@@ -426,6 +426,59 @@ body.app-modal-open {
 .admin-details-content {
     padding: 14px 16px 16px;
 }
+.admin-data-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.admin-data-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--c-base) 46%, var(--c-surface));
+}
+.admin-data-metric {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: 13px var(--space-4) 14px;
+}
+.admin-data-metric + .admin-data-metric {
+    border-left: 1px solid color-mix(in srgb, var(--c-border) 82%, transparent);
+}
+.admin-data-label {
+    margin: 0;
+    color: var(--c-text-muted);
+    font-size: var(--text-meta);
+    font-weight: var(--weight-medium);
+    line-height: 1.35;
+}
+.admin-data-value {
+    margin: 0;
+    color: var(--c-text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--text-title);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--weight-semibold);
+    line-height: 1.2;
+}
+.admin-data-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-2);
+}
+.admin-data-actions > .btn-primary,
+.admin-data-actions > .btn-secondary,
+.admin-data-actions > .btn-danger {
+    width: 100%;
+    min-width: 0;
+    padding-inline: var(--space-3);
+}
 .user-row {
     display: flex;
     align-items: center;
@@ -4072,6 +4125,22 @@ input[type="time"].input-field::-webkit-calendar-picker-indicator {
 
     .mcp-warning-backup {
         width: 100%;
+    }
+
+    .admin-data-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-data-metric:nth-child(odd) {
+        border-left: 0;
+    }
+
+    .admin-data-metric:nth-child(n + 3) {
+        border-top: 1px solid color-mix(in srgb, var(--c-border) 82%, transparent);
+    }
+
+    .admin-data-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 

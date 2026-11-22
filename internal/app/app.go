@@ -30,6 +30,11 @@ type App struct {
 
 // New creates an application, opens the SQLite database, and applies migrations.
 func New(ctx context.Context, cfg Config) (*App, error) {
+	dataDir, err := resolveDataDir(cfg.DataDir, cfg.LegacyDataDirs)
+	if err != nil {
+		return nil, err
+	}
+	cfg.DataDir = dataDir
 	if cfg.SessionSecret == "" {
 		secret, err := loadOrCreateSessionSecret(cfg.DataDir)
 		if err != nil {
@@ -38,6 +43,10 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		cfg.SessionSecret = secret
 	}
 	dbPath := filepath.Join(cfg.DataDir, "baby.db")
+	newDatabase, err := databaseIsNew(dbPath)
+	if err != nil {
+		return nil, err
+	}
 	db, err := openDatabase(dbPath)
 	if err != nil {
 		return nil, err
@@ -56,13 +65,28 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		haStates:  make(map[int64]string),
 		haTimers:  make(map[int64]*time.Timer),
 	}
-	if err := application.initDatabase(ctx); err != nil {
+	if err := application.initDatabase(ctx, newDatabase); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 	application.mcp = application.newMCPHandler()
 	application.registerRoutes()
 	return application, nil
+}
+
+func databaseIsNew(path string) (bool, error) {
+	info, err := os.Stat(path)
+	switch {
+	case err == nil:
+		if !info.Mode().IsRegular() {
+			return false, fmt.Errorf("database path %s is not a regular file", path)
+		}
+		return info.Size() == 0, nil
+	case os.IsNotExist(err):
+		return true, nil
+	default:
+		return false, fmt.Errorf("inspect database %s: %w", path, err)
+	}
 }
 
 // Close releases the database and cancels pending Home Assistant timers.
