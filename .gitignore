@@ -15,7 +15,7 @@ instance/
 .build/
 bin/
 dist/
-baby-tracker
+/baby-tracker
 coverage.out
 *.test
 

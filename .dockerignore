@@ -6,13 +6,15 @@ data/
 docs/
 screenshots/
 scripts/
+.env
+.env.*
 
 .DS_Store
 *.log
 *.out
 *.test
 *.exe
-baby-tracker
+/baby-tracker
 
 AGENTS.md
 CHANGELOG.md
