@@ -244,6 +244,107 @@ func TestHAStatusUsesStandardSensorPayload(t *testing.T) {
 	}
 }
 
+func TestAPIReadEndpointsRequireAuthentication(t *testing.T) {
+	application := newTestApp(t)
+
+	readPaths := []string{
+		"/api/quick-buttons",
+		"/api/records/dates",
+		"/api/records/today",
+		"/api/records/1",
+		"/api/records",
+		"/api/baby",
+		"/api/settings",
+		"/api/milk-estimate",
+		"/api/users",
+		"/api/audit-logs",
+		"/api/export/csv",
+		"/api/backup/export",
+		"/api/stats",
+		"/api/growth-logs",
+		"/api/weight-logs",
+		"/api/stats/trends",
+		"/api/vaccine/schedule",
+		"/api/vaccine/dates",
+		"/api/vaccine/day-records",
+		"/api/health/schedule",
+		"/api/health/dates",
+		"/api/health/day-records",
+		"/api/countdowns",
+		"/api/mcp/config",
+		"/api/mcp/api-key",
+		"/api/ha/status",
+		"/api/ha/feed-today",
+		"/api/ha/last-feed",
+		"/api/ha/excrete-today",
+		"/api/ha/buttons",
+		"/api/ha/button/1",
+	}
+	for _, path := range readPaths {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			response := performRequest(application, request, nil)
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("anonymous GET %s = %d, want %d", path, response.Code, http.StatusUnauthorized)
+			}
+		})
+	}
+
+	meRequest := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	meResponse := performRequest(application, meRequest, nil)
+	if meResponse.Code != http.StatusOK {
+		t.Fatalf("anonymous auth probe = %d, want %d", meResponse.Code, http.StatusOK)
+	}
+	var mePayload struct {
+		User any `json:"user"`
+	}
+	if err := json.Unmarshal(meResponse.Body.Bytes(), &mePayload); err != nil {
+		t.Fatalf("decode anonymous auth probe: %v", err)
+	}
+	if mePayload.User != nil {
+		t.Fatalf("anonymous auth probe user = %v, want null", mePayload.User)
+	}
+
+	apiKeyRequest := httptest.NewRequest(http.MethodGet, "/api/ha/api-key", nil)
+	apiKeyResponse := performRequest(application, apiKeyRequest, nil)
+	if apiKeyResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous HA API key GET = %d, want %d", apiKeyResponse.Code, http.StatusUnauthorized)
+	}
+
+	pressRequest := httptest.NewRequest(http.MethodPost, "/api/ha/button/1", nil)
+	pressResponse := performRequest(application, pressRequest, nil)
+	if pressResponse.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous HA button POST = %d, want %d", pressResponse.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestHAReadEndpointsAcceptAPIKey(t *testing.T) {
+	application := newTestApp(t)
+	if _, err := application.db.ExecContext(context.Background(),
+		"INSERT INTO settings (key, value) VALUES ('ha_api_key', 'sensor-key')"); err != nil {
+		t.Fatal(err)
+	}
+
+	readPaths := []string{
+		"/api/ha/status",
+		"/api/ha/feed-today",
+		"/api/ha/last-feed",
+		"/api/ha/excrete-today",
+		"/api/ha/buttons",
+		"/api/ha/button/1",
+	}
+	for _, path := range readPaths {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			request.Header.Set("X-API-Key", "sensor-key")
+			response := performRequest(application, request, nil)
+			if response.Code != http.StatusOK {
+				t.Fatalf("API-key GET %s = %d, body = %s", path, response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestVaccineScheduleMatches2026Edition(t *testing.T) {
 	application := newTestApp(t)
 	schedule, _, message, err := application.vaccineScheduleData(context.Background())

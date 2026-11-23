@@ -134,6 +134,10 @@ make build
 
 管理页恢复备份时会先校验数据表、列名和行数据。任何插入错误都会回滚整次恢复，不会返回部分恢复成功。
 
+## API
+
+完整 REST、Home Assistant 和 MCP 传输端点契约见 [API 规范](docs/API.md)。除登录态探测 `GET /api/auth/me` 外，所有业务读取接口都要求鉴权。
+
 ## Home Assistant
 
 管理界面可生成传感器、开关和 API Key 配置。完整说明见 [Home Assistant 集成指南](docs/ha-integration.md)。
@@ -151,9 +155,11 @@ sensor:
       - target_ml
       - feed_count
       - last_feed_time
+    headers:
+      Authorization: "Bearer <API_KEY>"
 ```
 
-快速记录接口支持 `Authorization: Bearer <API_KEY>`、`X-API-Key: <API_KEY>`，并保留 `?api_key=` 兼容参数。
+HA 传感器读取和快速记录接口都需要鉴权，支持 `Authorization: Bearer <API_KEY>`、`X-API-Key: <API_KEY>`，并保留 `?api_key=` 兼容参数。完整接口契约见 [API 规范](docs/API.md)。
 
 ## MCP
 
@@ -202,7 +208,7 @@ go vet ./...
 ├── internal/app/            HTTP、鉴权、数据库和业务逻辑
 ├── templates/               页面模板
 ├── static/                  样式、脚本、图标和本地 vendor 资源
-├── docs/                    HA、MCP 和计划表文档
+├── docs/                    API、HA、MCP 和计划表文档
 ├── screenshots/             历史界面截图
 ├── scripts/test.sh          本地检查脚本
 ├── Makefile                 Go 本机部署、依赖、测试和进程管理命令

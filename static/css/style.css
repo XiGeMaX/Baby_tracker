@@ -507,6 +507,317 @@ body.app-modal-open {
     min-height: var(--control-height-sm);
     padding-inline: 10px;
 }
+
+.quick-buttons-module {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.quick-buttons-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-height: var(--control-height);
+}
+
+.quick-buttons-count {
+    margin: 0;
+    color: var(--c-text-muted);
+    font-size: var(--text-label);
+    font-weight: var(--weight-medium);
+    line-height: var(--line-title);
+    white-space: nowrap;
+}
+
+.quick-buttons-add {
+    flex: 0 0 auto;
+    min-width: 112px;
+    height: var(--control-height);
+    min-height: var(--control-height);
+}
+
+.quick-buttons-add-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.quick-button-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.quick-buttons-loading {
+    margin: 0;
+    padding: var(--space-5) var(--space-3);
+    color: var(--c-text-muted);
+    font-size: var(--text-label);
+    text-align: center;
+}
+
+.quick-buttons-empty {
+    min-height: 104px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border: 1px dashed var(--c-border);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--c-base) 58%, transparent);
+    color: var(--c-text-muted);
+    text-align: center;
+}
+
+.quick-buttons-empty p {
+    margin: 0;
+    font-size: var(--text-label);
+    font-weight: var(--weight-medium);
+    line-height: var(--line-body);
+}
+
+.quick-buttons-empty-icon {
+    width: var(--control-height-sm);
+    height: var(--control-height-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-xs);
+    background: var(--c-surface);
+}
+
+.quick-buttons-empty-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.quick-button-row {
+    display: grid;
+    grid-template-columns: var(--control-height-sm) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-3);
+    min-width: 0;
+    min-height: 88px;
+    padding: var(--space-3);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--c-base) 48%, var(--c-surface));
+    transition:
+        border-color var(--motion-standard) ease,
+        background-color var(--motion-standard) ease,
+        box-shadow var(--motion-standard) ease;
+}
+
+.quick-button-row:hover {
+    border-color: var(--c-border-hover);
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--c-shadow) 34%, transparent);
+}
+
+.quick-button-row:focus-within {
+    border-color: var(--c-accent-border);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-accent) 16%, transparent);
+}
+
+.quick-button-row.is-disabled {
+    background: color-mix(in srgb, var(--c-base) 72%, transparent);
+}
+
+.quick-button-row.is-disabled .quick-button-order,
+.quick-button-row.is-disabled .quick-button-main {
+    opacity: 0.58;
+}
+
+.quick-button-order {
+    display: grid;
+    grid-template-rows: repeat(2, var(--control-height-sm));
+    gap: 2px;
+    align-self: center;
+    transition: opacity var(--motion-standard) ease;
+}
+
+.quick-button-order-button {
+    width: var(--control-height-sm);
+    height: var(--control-height-sm);
+    min-width: var(--control-height-sm);
+    min-height: var(--control-height-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--c-text-muted);
+    cursor: pointer;
+    transition:
+        color var(--motion-standard) ease,
+        background-color var(--motion-standard) ease,
+        border-color var(--motion-standard) ease,
+        scale var(--motion-fast) var(--motion-out);
+}
+
+.quick-button-order-button:hover:not(:disabled) {
+    border-color: var(--c-border);
+    background: var(--c-hover-overlay);
+    color: var(--c-accent);
+}
+
+.quick-button-order-button:active:not(:disabled) {
+    scale: 0.94;
+}
+
+.quick-button-order-button:disabled {
+    cursor: default;
+    opacity: 0.22;
+}
+
+.quick-button-order-button svg {
+    width: 15px;
+    height: 15px;
+}
+
+.quick-button-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-block: 2px;
+    transition: opacity var(--motion-standard) ease;
+}
+
+.quick-button-label {
+    min-height: calc(1.4em * 2);
+    margin: 0;
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--c-text-primary);
+    font-size: var(--text-body);
+    font-weight: var(--weight-semibold);
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+}
+
+.quick-button-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    min-width: 0;
+    color: var(--c-text-muted);
+    font-size: var(--text-meta);
+    font-weight: var(--weight-medium);
+    line-height: 1.4;
+}
+
+.quick-button-state,
+.quick-button-type,
+.quick-button-order-label,
+.quick-button-amount {
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.quick-button-state {
+    min-height: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 7px;
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius-pill);
+    color: var(--c-text-muted);
+    font-size: var(--text-meta);
+    font-weight: var(--weight-semibold);
+    line-height: 1;
+}
+
+.quick-button-state::before {
+    width: 5px;
+    height: 5px;
+    flex: 0 0 auto;
+    border-radius: var(--radius-pill);
+    background: currentColor;
+    content: "";
+}
+
+.quick-button-state.is-active {
+    border-color: var(--c-accent-border);
+    background: var(--c-accent-soft);
+    color: var(--c-accent);
+}
+
+.quick-button-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--c-text-secondary);
+    font-size: var(--text-label);
+}
+
+.quick-button-type svg {
+    width: 13px;
+    height: 13px;
+}
+
+.quick-button-type[data-type="feed"] { color: var(--c-info); }
+.quick-button-type[data-type="excrete"] { color: var(--c-warning); }
+.quick-button-type[data-type="symptom"] { color: var(--c-danger); }
+.quick-button-type[data-type="supplement"] { color: var(--c-accent); }
+
+.quick-button-order-label,
+.quick-button-amount {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+.quick-button-actions {
+    display: grid;
+    grid-template-columns: repeat(3, var(--control-height-sm));
+    gap: 4px;
+    align-self: center;
+}
+
+.btn-secondary.quick-button-action,
+.btn-danger.quick-button-action {
+    width: var(--control-height-sm);
+    min-width: var(--control-height-sm);
+    height: var(--control-height-sm);
+    min-height: var(--control-height-sm);
+    justify-content: center;
+    padding: 0;
+}
+
+.quick-button-action svg {
+    width: 15px;
+    height: 15px;
+}
+
+.quick-button-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+}
+
+.quick-button-editor-field {
+    min-width: 0;
+}
+
+.quick-button-editor-field-wide {
+    grid-column: 1 / -1;
+}
+
+.quick-button-editor-actions {
+    margin-top: var(--space-5);
+}
+
 .admin-settings-section {
     margin-top: 14px;
     padding: 12px;
@@ -4249,6 +4560,46 @@ input[type="time"].input-field::-webkit-calendar-picker-indicator {
 
     .admin-data-actions {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .quick-button-row {
+        grid-template-areas:
+            "order main"
+            "actions actions";
+        grid-template-columns: var(--control-height-sm) minmax(0, 1fr);
+        gap: var(--space-2) var(--space-3);
+        align-items: start;
+        padding: var(--space-2) var(--space-3);
+    }
+
+    .quick-button-order {
+        grid-area: order;
+    }
+
+    .quick-button-main {
+        grid-area: main;
+    }
+
+    .quick-button-order-label {
+        display: none;
+    }
+
+    .quick-button-actions {
+        grid-area: actions;
+        width: 100%;
+        justify-content: flex-end;
+        padding-top: var(--space-1);
+        border-top: 1px solid color-mix(in srgb, var(--c-border) 84%, transparent);
+    }
+}
+
+@media (max-width: 380px) {
+    .quick-button-editor-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .quick-button-editor-field-wide {
+        grid-column: auto;
     }
 }
 

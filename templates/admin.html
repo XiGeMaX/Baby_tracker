@@ -168,12 +168,16 @@
             </summary>
             <div id="quick-buttons-panel" class="admin-details-panel">
                 <div class="admin-details-panel-inner admin-details-content">
-                    <div class="space-y-3">
-                        <div class="flex justify-end">
-                            <button class="btn-primary text-xs px-3 py-1.5" onclick="showAddButtonModal()">添加按钮</button>
+                    <div class="quick-buttons-module">
+                        <div class="quick-buttons-toolbar">
+                            <p id="quick-buttons-count" class="quick-buttons-count" aria-live="polite">加载中...</p>
+                            <button type="button" class="btn-primary quick-buttons-add" onclick="showAddButtonModal()" aria-label="添加快速记录按钮">
+                                <i data-lucide="plus" class="quick-buttons-add-icon" aria-hidden="true"></i>
+                                <span>添加按钮</span>
+                            </button>
                         </div>
-                        <div id="buttons-list" class="space-y-2">
-                            <p class="text-text-muted text-sm text-center py-4">加载中...</p>
+                        <div id="buttons-list" class="quick-button-list" aria-live="polite">
+                            <p class="quick-buttons-loading">加载中...</p>
                         </div>
                     </div>
                 </div>
@@ -383,7 +387,7 @@
                 <button class="btn-secondary text-xs px-3 py-1.5 whitespace-nowrap" onclick="copyHaApiKey()">复制</button>
                 <button class="btn-primary text-xs px-3 py-1.5 whitespace-nowrap" onclick="generateHaApiKey()">生成</button>
             </div>
-            <p class="text-[10px] text-text-muted">快速记录接口的认证凭证，生成后旧密钥立即失效</p>
+            <p class="text-[10px] text-text-muted">传感器与快速记录接口的认证凭证，生成后旧密钥立即失效</p>
         </div>
 
         <!-- 步骤2: 填写地址 -->
@@ -494,50 +498,52 @@
 <div id="add-btn-modal" class="app-modal hidden items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="btn-modal-title">
     <div class="app-modal-panel">
         <h3 id="btn-modal-title" class="app-modal-title mb-4">添加快速记录按钮</h3>
-        <div class="space-y-3">
-            <div>
-                <label class="field-label" for="new-btn-type">类型</label>
-                <select id="new-btn-type" class="input-field" onchange="updateSubTypes()">
-                    <option value="feed">喂养</option>
-                    <option value="excrete">排泄</option>
-                    <option value="symptom">症状</option>
-                    <option value="supplement">补充</option>
-                </select>
-            </div>
-            <div>
-                <label class="field-label" for="new-btn-subtype">子类型</label>
-                <select id="new-btn-subtype" class="input-field" onchange="onSubTypeChange()"></select>
-            </div>
-            <div id="custom-subtype-wrap" class="hidden">
-                <label class="field-label" for="custom-subtype-input">自定义子类型名称</label>
-                <input type="text" id="custom-subtype-input" class="input-field" placeholder="如：维D滴剂">
-            </div>
-            <div id="food-unit-wrap" class="hidden">
-                <label class="field-label" for="btn-food-unit">辅食计量单位</label>
-                <div class="flex gap-2 items-center">
-                    <select id="btn-food-unit" class="input-field flex-1" onchange="onFoodUnitChange()">
-                        <option value="g">g (克)</option>
-                        <option value="勺">勺</option>
-                        <option value="块">块</option>
-                        <option value="_custom">自定义...</option>
+        <div class="quick-button-editor">
+            <div class="quick-button-editor-grid">
+                <div class="quick-button-editor-field">
+                    <label class="field-label" for="new-btn-type">类型</label>
+                    <select id="new-btn-type" class="input-field" onchange="updateSubTypes()">
+                        <option value="feed">喂养</option>
+                        <option value="excrete">排泄</option>
+                        <option value="symptom">症状</option>
+                        <option value="supplement">补充</option>
                     </select>
-                    <input type="text" id="btn-food-unit-custom" class="input-field flex-1 hidden" placeholder="如：ml、份">
+                </div>
+                <div class="quick-button-editor-field">
+                    <label class="field-label" for="new-btn-subtype">子类型</label>
+                    <select id="new-btn-subtype" class="input-field" onchange="onSubTypeChange()"></select>
+                </div>
+                <div id="custom-subtype-wrap" class="quick-button-editor-field quick-button-editor-field-wide hidden">
+                    <label class="field-label" for="custom-subtype-input">自定义子类型名称</label>
+                    <input type="text" id="custom-subtype-input" class="input-field" placeholder="如：维D滴剂">
+                </div>
+                <div id="food-unit-wrap" class="quick-button-editor-field quick-button-editor-field-wide hidden">
+                    <label class="field-label" for="btn-food-unit">辅食计量单位</label>
+                    <div class="flex gap-2 items-center">
+                        <select id="btn-food-unit" class="input-field flex-1" onchange="onFoodUnitChange()">
+                            <option value="g">g (克)</option>
+                            <option value="勺">勺</option>
+                            <option value="块">块</option>
+                            <option value="_custom">自定义...</option>
+                        </select>
+                        <input type="text" id="btn-food-unit-custom" class="input-field flex-1 hidden" placeholder="如：ml、份">
+                    </div>
+                </div>
+                <div class="quick-button-editor-field quick-button-editor-field-wide">
+                    <label class="field-label" for="new-btn-label">显示标签</label>
+                    <input type="text" id="new-btn-label" class="input-field" placeholder="如：配方奶 90ml">
+                </div>
+                <div class="quick-button-editor-field">
+                    <label id="btn-amount-label" class="field-label" for="new-btn-amount">预设量 (ml，0=不预设)</label>
+                    <input type="number" id="new-btn-amount" class="input-field font-mono" value="0" min="0">
+                </div>
+                <div class="quick-button-editor-field">
+                    <label class="field-label" for="new-btn-order">排序</label>
+                    <input type="number" id="new-btn-order" class="input-field font-mono" value="0" min="0">
                 </div>
             </div>
-            <div>
-                <label class="field-label" for="new-btn-label">显示标签</label>
-                <input type="text" id="new-btn-label" class="input-field" placeholder="如：配方奶 90ml">
-            </div>
-            <div>
-                <label id="btn-amount-label" class="field-label" for="new-btn-amount">预设量 (ml，0=不预设)</label>
-                <input type="number" id="new-btn-amount" class="input-field font-mono" value="0" min="0">
-            </div>
-            <div>
-                <label class="field-label" for="new-btn-order">排序</label>
-                <input type="number" id="new-btn-order" class="input-field font-mono" value="0" min="0">
-            </div>
         </div>
-        <div class="modal-actions">
+        <div class="modal-actions quick-button-editor-actions">
             <button type="button" class="btn-secondary text-sm" onclick="closeAddButtonModal()">取消</button>
             <button type="button" id="btn-modal-submit" class="btn-primary text-sm" onclick="addButton()">添加</button>
         </div>

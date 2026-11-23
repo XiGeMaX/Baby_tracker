@@ -178,41 +178,56 @@ async function loadButtons() {
 
 function renderButtons(buttons) {
     const container = document.getElementById('buttons-list');
+    const count = document.getElementById('quick-buttons-count');
+    if (count) count.textContent = `${buttons.length} 个按钮`;
+
     if (buttons.length === 0) {
-        container.innerHTML = '<p class="text-text-muted text-sm text-center py-4">暂无按钮，点击上方添加</p>';
+        container.innerHTML = `
+            <div class="quick-buttons-empty">
+                <span class="quick-buttons-empty-icon" aria-hidden="true"><i data-lucide="plus-circle"></i></span>
+                <p>暂无快速记录按钮</p>
+            </div>`;
+        lucide.createIcons();
         return;
     }
 
     const typeLabels = { feed: '喂养', excrete: '排泄', symptom: '症状', supplement: '补充' };
-    const typeColors = { feed: 'text-blue-400', excrete: 'text-amber-400', symptom: 'text-red-400', supplement: 'text-emerald-400' };
+    const typeIcons = { feed: 'droplets', excrete: 'circle-dot', symptom: 'heart-pulse', supplement: 'pill' };
 
     container.innerHTML = buttons.map((b, i) => `
-        <div class="flex items-center gap-3 py-2 px-3 rounded-lg bg-base border border-border ${b.is_active ? '' : 'opacity-40'}">
-            <div class="flex flex-col gap-0.5">
-                <button class="text-text-muted hover:text-accent transition-colors ${i === 0 ? 'invisible' : ''}" onclick="moveButton(${b.id}, -1)" title="上移">
-                    <i data-lucide="chevron-up" class="w-3.5 h-3.5"></i>
+        <article class="quick-button-row ${b.is_active ? '' : 'is-disabled'}">
+            <div class="quick-button-order" role="group" aria-label="${esc(b.label)}排序">
+                <button type="button" class="quick-button-order-button" onclick="moveButton(${b.id}, -1)" title="上移" aria-label="上移${esc(b.label)}" ${i === 0 ? 'disabled' : ''}>
+                    <i data-lucide="chevron-up" aria-hidden="true"></i>
                 </button>
-                <button class="text-text-muted hover:text-accent transition-colors ${i === buttons.length - 1 ? 'invisible' : ''}" onclick="moveButton(${b.id}, 1)" title="下移">
-                    <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+                <button type="button" class="quick-button-order-button" onclick="moveButton(${b.id}, 1)" title="下移" aria-label="下移${esc(b.label)}" ${i === buttons.length - 1 ? 'disabled' : ''}>
+                    <i data-lucide="chevron-down" aria-hidden="true"></i>
                 </button>
             </div>
-            <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                    <span class="text-sm text-text-primary">${esc(b.label)}</span>
-                    <span class="text-xs ${typeColors[b.type]}">${typeLabels[b.type]}</span>
-                    ${b.amount ? `<span class="text-xs text-text-muted font-mono">${b.amount}${b.sub_type === 'solid_food' && b.food_unit ? esc(b.food_unit) : 'ml'}</span>` : ''}
+            <div class="quick-button-main">
+                <h3 class="quick-button-label" title="${esc(b.label)}">${esc(b.label)}</h3>
+                <div class="quick-button-meta">
+                    <span class="quick-button-state ${b.is_active ? 'is-active' : 'is-inactive'}">${b.is_active ? '启用' : '禁用'}</span>
+                    <span class="quick-button-type" data-type="${esc(b.type)}">
+                        <i data-lucide="${typeIcons[b.type] || 'circle-dot'}" aria-hidden="true"></i>
+                        ${typeLabels[b.type] || '记录'}
+                    </span>
+                    <span class="quick-button-order-label">排序 ${b.sort_order}</span>
+                    ${b.amount ? `<span class="quick-button-amount">${esc(b.amount)}${b.sub_type === 'solid_food' ? esc(b.food_unit || 'g') : 'ml'}</span>` : ''}
                 </div>
-                <p class="text-xs text-text-muted">排序: ${b.sort_order} · ${b.is_active ? '启用' : '禁用'}</p>
             </div>
-            <div class="flex items-center gap-1 flex-shrink-0">
-                <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-amber-400 hover:border-amber-500/30 transition-colors"
-                        onclick="showEditButtonModal(${b.id})">编辑</button>
-                <button class="text-xs px-2 py-1 rounded border border-border text-text-muted hover:text-accent transition-colors"
-                        onclick="toggleButton(${b.id}, ${b.is_active ? 0 : 1})">${b.is_active ? '禁用' : '启用'}</button>
-                <button class="text-xs px-2 py-1 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
-                        onclick="deleteButton(${b.id})">删除</button>
+            <div class="quick-button-actions" role="group" aria-label="${esc(b.label)}操作">
+                <button type="button" class="btn-secondary quick-button-action" onclick="showEditButtonModal(${b.id})" title="编辑" aria-label="编辑${esc(b.label)}">
+                    <i data-lucide="pencil" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="btn-secondary quick-button-action" onclick="toggleButton(${b.id}, ${b.is_active ? 0 : 1})" title="${b.is_active ? '禁用' : '启用'}" aria-label="${b.is_active ? '禁用' : '启用'}${esc(b.label)}">
+                    <i data-lucide="${b.is_active ? 'eye-off' : 'eye'}" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="btn-danger quick-button-action is-danger" onclick="deleteButton(${b.id})" title="删除" aria-label="删除${esc(b.label)}">
+                    <i data-lucide="trash-2" aria-hidden="true"></i>
+                </button>
             </div>
-        </div>
+        </article>
     `).join('');
     lucide.createIcons();
 }

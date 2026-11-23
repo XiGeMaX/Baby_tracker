@@ -12,7 +12,7 @@
 2. 点击「生成」按钮生成 API 密钥
 3. 点击「复制」保存密钥
 
-> 密钥用于快速记录接口认证，重新生成后旧密钥立即失效。
+> 密钥用于所有 HA 接口认证，包括传感器读取和快速记录。重新生成后旧密钥立即失效。
 
 ### 步骤 2：填写服务地址
 
@@ -39,7 +39,7 @@
 
 ### 认证方式
 
-快速记录接口需要 API 密钥，通过以下任一方式传递：
+HA 传感器读取和快速记录接口都需要 API 密钥，通过以下任一方式传递：
 
 | 方式 | 格式 |
 |---|---|
@@ -47,7 +47,7 @@
 | HTTP 头 | `Authorization: Bearer <YOUR_API_KEY>` |
 | HTTP 头 | `X-API-Key: <YOUR_API_KEY>` |
 
-> 传感器接口（只读）无需密钥。
+> 已审批的网页会话也可读取传感器接口，但 Home Assistant 推荐使用独立 API 密钥。按钮写入只接受 API 密钥。
 
 ### 传感器配置
 
@@ -70,6 +70,8 @@ sensor:
       - last_feed_time
       - estimated_feeds_left
       - per_feed_ml
+    headers:
+      Authorization: "Bearer <YOUR_API_KEY>"
     scan_interval: 300
 
   - platform: rest
@@ -81,6 +83,8 @@ sensor:
       - urine_count
       - stool_count
       - total_count
+    headers:
+      Authorization: "Bearer <YOUR_API_KEY>"
     scan_interval: 300
 ```
 
@@ -156,21 +160,21 @@ HA 传感器接口统一返回实体结构：
 
 HA 配置应使用 `value_json.state` 读取主状态，并通过 `json_attributes_path: "$.attributes"` 读取属性。`date=YYYY-MM-DD` 参数可指定需要查询的日期。
 
-### 传感器 API（无需认证）
+### 传感器 API（需要认证）
 
-| 端点 | 方法 | 说明 |
-|---|---|---|
-| `/api/ha/status` | GET | 今日概览（奶量、排泄、进度） |
-| `/api/ha/feed-today` | GET | 今日喂养详情 |
-| `/api/ha/last-feed` | GET | 上次喂养信息 |
-| `/api/ha/excrete-today` | GET | 今日排泄详情 |
+| 端点 | 方法 | 认证 | 说明 |
+|---|---|---|---|
+| `/api/ha/status` | GET | **需要** | 今日概览（奶量、排泄、进度） |
+| `/api/ha/feed-today` | GET | **需要** | 今日喂养详情 |
+| `/api/ha/last-feed` | GET | **需要** | 上次喂养信息 |
+| `/api/ha/excrete-today` | GET | **需要** | 今日排泄详情 |
 
 ### 开关 API
 
 | 端点 | 方法 | 认证 | 说明 |
 |---|---|---|---|
-| `/api/ha/buttons` | GET | 不需要 | 获取所有启用按钮列表 |
-| `/api/ha/button/<id>` | GET | 不需要 | 查询按钮状态（HA 轮询） |
+| `/api/ha/buttons` | GET | **需要** | 获取所有启用按钮列表 |
+| `/api/ha/button/<id>` | GET | **需要** | 查询按钮状态（HA 轮询） |
 | `/api/ha/button/<id>` | POST | **需要** | 触发记录（HA 开关打开时调用） |
 | `/api/ha/button/<id>/press` | POST | **需要** | 触发记录（备用端点） |
 
@@ -196,7 +200,10 @@ HA 打开开关 → POST /api/ha/button/<id>
                 ↓
          2 秒后状态自动变为 "off"
                 ↓
-HA 轮询 GET /api/ha/button/<id> → state: "off"
+HA 轮询 GET /api/ha/button/<id>
+              Authorization: Bearer <KEY>
+                ↓
+         返回 state: "off"
                 ↓
          开关自动回弹关闭
 ```
