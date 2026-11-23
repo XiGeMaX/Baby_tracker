@@ -138,6 +138,9 @@ func TestAdminPageRendersAllCollapsibleSectionsWithSinglePrefix(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("admin status = %d, body = %s", response.Code, response.Body.String())
 	}
+	if got := response.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("admin Cache-Control = %q, want no-store", got)
+	}
 	body := response.Body.String()
 	if count := strings.Count(body, `<details class="admin-details">`); count != 8 {
 		t.Fatalf("admin collapsible section count = %d, want 8", count)
@@ -147,6 +150,26 @@ func TestAdminPageRendersAllCollapsibleSectionsWithSinglePrefix(t *testing.T) {
 	}
 	if !strings.Contains(body, `data-app-base="/baby-tracker"`) {
 		t.Fatal("rendered admin page is missing the base path")
+	}
+	for _, asset := range []string{
+		"/baby-tracker/static/css/style.css?v=" + assetVersion,
+		"/baby-tracker/static/js/admin.js?v=" + assetVersion,
+	} {
+		if !strings.Contains(body, asset) {
+			t.Fatalf("rendered admin page is missing versioned asset %q", asset)
+		}
+	}
+}
+
+func TestStaticAssetsRequireRevalidation(t *testing.T) {
+	application := newTestApp(t)
+	response := performRequest(application,
+		httptest.NewRequest(http.MethodGet, "/static/css/style.css", nil), nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("stylesheet status = %d", response.Code)
+	}
+	if got := response.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("stylesheet Cache-Control = %q, want no-cache", got)
 	}
 }
 

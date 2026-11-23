@@ -186,4 +186,10 @@ showToast('保存失败，请重试', 'error');
 6. `prefers-reduced-motion` 下没有必须等待的长动画。
 7. 页面中不存在可见的系统原生日期、时间、文件或下拉选择界面。
 
+## 14. 静态资源版本
+
+- 公共样式和页面脚本必须通过模板中的 `asset_version` 查询参数加载，避免浏览器缓存导致 HTML、CSS 和 JavaScript 版本错配。
+- 修改 `static/css/style.css`、`static/js/` 下的页面脚本或 `static/sw.js` 时，必须同步递增 `internal/app/server.go` 中的 `assetVersion`；Service Worker 缓存名也要同步更新。
+- 页面不应依赖未带版本参数的业务样式或页面脚本 URL。
+
 用户可见的界面规则变更必须同步记录到 `CHANGELOG.md`。

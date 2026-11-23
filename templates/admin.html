@@ -170,14 +170,14 @@
                 <div class="admin-details-panel-inner admin-details-content">
                     <div class="quick-buttons-module">
                         <div class="quick-buttons-toolbar">
-                            <p id="quick-buttons-count" class="quick-buttons-count" aria-live="polite">加载中...</p>
+                            <p id="quick-buttons-count" class="quick-buttons-count" aria-live="polite" aria-atomic="true"></p>
                             <button type="button" class="btn-primary quick-buttons-add" onclick="showAddButtonModal()" aria-label="添加快速记录按钮">
                                 <i data-lucide="plus" class="quick-buttons-add-icon" aria-hidden="true"></i>
                                 <span>添加按钮</span>
                             </button>
                         </div>
-                        <div id="buttons-list" class="quick-button-list" aria-live="polite">
-                            <p class="quick-buttons-loading">加载中...</p>
+                        <div id="buttons-list" class="quick-button-list" aria-live="polite" aria-busy="true">
+                            <p class="quick-buttons-loading" role="status">正在加载快速记录按钮</p>
                         </div>
                     </div>
                 </div>
@@ -572,5 +572,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/admin.js" data-page-script></script>
+<script src="/static/js/admin.js?v={{ asset_version }}" data-page-script></script>
 {% endblock %}

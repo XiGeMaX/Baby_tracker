@@ -13,6 +13,9 @@ import (
 	"github.com/flosch/pongo2/v6"
 )
 
+// Bump when browser-loaded styles or scripts change so open clients fetch matching assets.
+const assetVersion = "2026-11-23.1"
+
 func (a *App) basePathMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		basePath := a.cfg.BasePath
@@ -53,6 +56,7 @@ func (a *App) renderPage(w http.ResponseWriter, r *http.Request, page string, va
 	values["app_base"] = a.cfg.BasePath
 	values["current_user"] = state.User
 	values["initial"] = userInitial(state.User)
+	values["asset_version"] = assetVersion
 	if _, ok := values["active_page"]; !ok {
 		values["active_page"] = ""
 	}
@@ -68,6 +72,7 @@ func (a *App) renderPage(w http.ResponseWriter, r *http.Request, page string, va
 		http.Error(w, "template error", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, body)
 }
@@ -144,6 +149,8 @@ func (a *App) staticHandler() http.Handler {
 				scope = a.cfg.BasePath + "/"
 			}
 			w.Header().Set("Service-Worker-Allowed", scope)
+			w.Header().Set("Cache-Control", "no-cache")
+		} else if strings.HasSuffix(cleanPath, ".css") || strings.HasSuffix(cleanPath, ".js") {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		http.ServeFile(w, r, filepath.Join(staticDir, filepath.FromSlash(cleanPath)))

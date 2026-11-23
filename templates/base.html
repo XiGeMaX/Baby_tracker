@@ -35,7 +35,7 @@
             }
         }
     </script>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ asset_version }}">
     <script>
         // 主题初始化（在渲染前执行，避免闪烁）
         (function() {
@@ -163,10 +163,10 @@
         {% block content %}{% endblock %}
     </main>
 
-    <script src="/static/js/motion.js"></script>
-    <script src="/static/js/theme-controls.js"></script>
-    <script src="/static/js/app.js"></script>
-    <script src="/static/js/spa.js"></script>
+    <script src="/static/js/motion.js?v={{ asset_version }}"></script>
+    <script src="/static/js/theme-controls.js?v={{ asset_version }}"></script>
+    <script src="/static/js/app.js?v={{ asset_version }}"></script>
+    <script src="/static/js/spa.js?v={{ asset_version }}"></script>
     {% block scripts %}{% endblock %}
     <script>
         // ── 主题切换 ─────────────────────────────────────

@@ -557,6 +557,67 @@ body.app-modal-open {
     text-align: center;
 }
 
+.quick-buttons-state {
+    min-height: 104px;
+    display: grid;
+    grid-template-columns: var(--control-height-sm) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid color-mix(in srgb, var(--c-danger) 28%, var(--c-border));
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--c-danger) 6%, var(--c-surface));
+}
+
+.quick-buttons-state-icon {
+    width: var(--control-height-sm);
+    height: var(--control-height-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-xs);
+    background: color-mix(in srgb, var(--c-danger) 12%, transparent);
+    color: var(--c-danger);
+}
+
+.quick-buttons-state-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.quick-buttons-state-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.quick-buttons-state-copy p,
+.quick-buttons-state-copy span {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.quick-buttons-state-copy p {
+    color: var(--c-text-primary);
+    font-size: var(--text-label);
+    font-weight: var(--weight-semibold);
+    line-height: 1.4;
+}
+
+.quick-buttons-state-copy span {
+    color: var(--c-text-muted);
+    font-size: var(--text-meta);
+    line-height: 1.4;
+}
+
+.btn-secondary.quick-buttons-retry {
+    height: var(--control-height-sm);
+    min-height: var(--control-height-sm);
+    padding-inline: var(--space-3);
+    white-space: nowrap;
+}
+
 .quick-buttons-empty {
     min-height: 104px;
     display: flex;
@@ -597,12 +658,14 @@ body.app-modal-open {
 
 .quick-button-row {
     display: grid;
-    grid-template-columns: var(--control-height-sm) minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--space-3);
+    grid-template-areas:
+        "order main"
+        "actions actions";
+    grid-template-columns: var(--control-height-sm) minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-2) var(--space-3);
     min-width: 0;
-    min-height: 88px;
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--c-border);
     border-radius: var(--radius-control);
     background: color-mix(in srgb, var(--c-base) 48%, var(--c-surface));
@@ -632,6 +695,7 @@ body.app-modal-open {
 }
 
 .quick-button-order {
+    grid-area: order;
     display: grid;
     grid-template-rows: repeat(2, var(--control-height-sm));
     gap: 2px;
@@ -681,6 +745,7 @@ body.app-modal-open {
 }
 
 .quick-button-main {
+    grid-area: main;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -778,11 +843,19 @@ body.app-modal-open {
     font-variant-numeric: tabular-nums;
 }
 
+.quick-button-order-label {
+    display: none;
+}
+
 .quick-button-actions {
+    grid-area: actions;
+    width: 100%;
     display: grid;
     grid-template-columns: repeat(3, var(--control-height-sm));
     gap: 4px;
-    align-self: center;
+    justify-content: flex-end;
+    padding-top: var(--space-1);
+    border-top: 1px solid color-mix(in srgb, var(--c-border) 84%, transparent);
 }
 
 .btn-secondary.quick-button-action,
@@ -816,6 +889,17 @@ body.app-modal-open {
 
 .quick-button-editor-actions {
     margin-top: var(--space-5);
+}
+
+@media (max-width: 560px) {
+    .quick-buttons-state {
+        grid-template-columns: var(--control-height-sm) minmax(0, 1fr);
+    }
+
+    .btn-secondary.quick-buttons-retry {
+        grid-column: 2;
+        justify-self: start;
+    }
 }
 
 .admin-settings-section {
@@ -4562,35 +4646,6 @@ input[type="time"].input-field::-webkit-calendar-picker-indicator {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .quick-button-row {
-        grid-template-areas:
-            "order main"
-            "actions actions";
-        grid-template-columns: var(--control-height-sm) minmax(0, 1fr);
-        gap: var(--space-2) var(--space-3);
-        align-items: start;
-        padding: var(--space-2) var(--space-3);
-    }
-
-    .quick-button-order {
-        grid-area: order;
-    }
-
-    .quick-button-main {
-        grid-area: main;
-    }
-
-    .quick-button-order-label {
-        display: none;
-    }
-
-    .quick-button-actions {
-        grid-area: actions;
-        width: 100%;
-        justify-content: flex-end;
-        padding-top: var(--space-1);
-        border-top: 1px solid color-mix(in srgb, var(--c-border) 84%, transparent);
-    }
 }
 
 @media (max-width: 380px) {

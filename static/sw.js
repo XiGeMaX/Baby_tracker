@@ -1,4 +1,4 @@
-const CACHE_NAME = 'baby-tracker-v6';
+const CACHE_NAME = 'baby-tracker-v7';
 const APP_BASE = new URL(self.registration.scope).pathname.replace(/\/+$/, '');
 const appUrl = path => `${APP_BASE}${path}`;
 const STATIC_ASSETS = [
@@ -48,6 +48,6 @@ self.addEventListener('fetch', event => {
     }
     // 其他请求：网络优先，失败回缓存
     event.respondWith(
-        fetch(event.request).catch(() => caches.match(event.request))
+        fetch(event.request).catch(() => caches.match(event.request, { ignoreSearch: true }))
     );
 });

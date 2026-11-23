@@ -169,16 +169,46 @@ async function deleteUser(id) {
 let _cachedButtons = [];
 
 async function loadButtons() {
+    const container = document.getElementById('buttons-list');
+    const count = document.getElementById('quick-buttons-count');
+    if (!container) return;
+    container.setAttribute('aria-busy', 'true');
+    if (count) count.textContent = '正在同步';
     try {
         const buttons = await api('/api/quick-buttons');
+        if (!Array.isArray(buttons)) throw new Error('按钮数据格式无效');
         _cachedButtons = buttons;
         renderButtons(buttons);
-    } catch (e) { /* ignore */ }
+    } catch (error) {
+        renderButtonsError(error);
+    }
+}
+
+function renderButtonsError(error) {
+    const container = document.getElementById('buttons-list');
+    const count = document.getElementById('quick-buttons-count');
+    if (!container) return;
+    container.setAttribute('aria-busy', 'false');
+    if (count) count.textContent = '加载失败';
+    const detail = error instanceof Error && error.message ? error.message : '请稍后重试';
+    container.innerHTML = `
+        <div class="quick-buttons-state" role="alert">
+            <span class="quick-buttons-state-icon" aria-hidden="true"><i data-lucide="circle-alert"></i></span>
+            <div class="quick-buttons-state-copy">
+                <p>无法加载快速记录按钮</p>
+                <span>${esc(detail)}</span>
+            </div>
+            <button type="button" class="btn-secondary quick-buttons-retry">重新加载</button>
+        </div>`;
+    container.querySelector('.quick-buttons-retry')?.addEventListener('click', loadButtons, { once: true });
+    lucide.createIcons();
 }
 
 function renderButtons(buttons) {
     const container = document.getElementById('buttons-list');
     const count = document.getElementById('quick-buttons-count');
+    if (!container) return;
+    container.setAttribute('aria-busy', 'false');
     if (count) count.textContent = `${buttons.length} 个按钮`;
 
     if (buttons.length === 0) {
