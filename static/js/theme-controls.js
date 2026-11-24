@@ -552,6 +552,175 @@
         wrapper.classList.toggle('is-disabled', input.disabled);
     }
 
+    // Three identical cycles keep the wheel seamless; only the middle cycle is exposed to assistive tech.
+    function createTimeWheel(values, initialValue, label, key, onValueChange) {
+        const copyCount = 3;
+        const middleCopy = 1;
+        const valueCount = values.length;
+        const totalOptions = valueCount * copyCount;
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const wheel = document.createElement('div');
+        wheel.className = 'ui-time-wheel';
+        const list = document.createElement('div');
+        list.className = 'ui-time-list';
+        list.setAttribute('role', 'listbox');
+        list.setAttribute('aria-label', label);
+        list.setAttribute('aria-orientation', 'vertical');
+        list.tabIndex = 0;
+
+        const buttons = [];
+        let value = Math.max(0, Math.min(valueCount - 1, Number(initialValue) || 0));
+        let activeIndex = valueCount + value;
+        let scrollFrame = 0;
+        let settleTimer = 0;
+        let destroyed = false;
+
+        function optionStep() {
+            return buttons[0]?.offsetHeight || 40;
+        }
+
+        function cycleHeight() {
+            return optionStep() * valueCount;
+        }
+
+        function paint(nextValue) {
+            value = nextValue;
+            buttons.forEach((button, index) => {
+                const selected = Number(button.dataset.value) === value;
+                button.classList.toggle('is-selected', selected);
+                if (index >= valueCount && index < valueCount * 2) {
+                    button.setAttribute('aria-selected', String(selected));
+                }
+            });
+            const accessibleOption = buttons[valueCount + value];
+            if (accessibleOption) {
+                list.setAttribute('aria-activedescendant', accessibleOption.id);
+                onValueChange(value);
+            }
+        }
+
+        function applyIndex(nextIndex) {
+            activeIndex = Math.max(0, Math.min(totalOptions - 1, nextIndex));
+            paint(values[activeIndex % valueCount]);
+        }
+
+        function scrollToIndex(nextIndex, behavior) {
+            const clamped = Math.max(0, Math.min(totalOptions - 1, nextIndex));
+            list.scrollTo({
+                top: clamped * optionStep(),
+                behavior: behavior === 'smooth' && !reducedMotion.matches ? 'smooth' : 'auto',
+            });
+        }
+
+        function centerActive(smooth) {
+            scrollToIndex(activeIndex, smooth ? 'smooth' : 'auto');
+        }
+
+        function keepInMiddleCycle() {
+            const height = cycleHeight();
+            if (!height) return;
+            if (list.scrollTop < height) list.scrollTop += height;
+            else if (list.scrollTop >= height * 2) list.scrollTop -= height;
+        }
+
+        function selectIndex(nextIndex, smooth) {
+            applyIndex(nextIndex);
+            scrollToIndex(nextIndex, smooth ? 'smooth' : 'auto');
+            list.focus({ preventScroll: true });
+        }
+
+        function stepSelection(delta) {
+            const nextValue = (value + delta + valueCount) % valueCount;
+            const nextIndex = middleCopy * valueCount + nextValue;
+            selectIndex(nextIndex, true);
+        }
+
+        function handleScroll() {
+            if (scrollFrame) return;
+            scrollFrame = requestAnimationFrame(() => {
+                scrollFrame = 0;
+                if (destroyed) return;
+                keepInMiddleCycle();
+                const nextIndex = Math.round(list.scrollTop / optionStep());
+                applyIndex(nextIndex);
+                window.clearTimeout(settleTimer);
+                settleTimer = window.setTimeout(() => {
+                    if (destroyed) return;
+                    keepInMiddleCycle();
+                    const settledIndex = Math.round(list.scrollTop / optionStep());
+                    if (Math.abs(list.scrollTop - settledIndex * optionStep()) > 0.5) {
+                        applyIndex(settledIndex);
+                        scrollToIndex(settledIndex, 'smooth');
+                    }
+                }, 120);
+            });
+        }
+
+        for (let copy = 0; copy < copyCount; copy += 1) {
+            values.forEach((optionValue, valueIndex) => {
+                const index = copy * valueCount + valueIndex;
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'ui-time-option';
+                button.dataset.value = String(optionValue);
+                button.setAttribute('role', 'option');
+                button.setAttribute('aria-label', `${label} ${pad(optionValue)}`);
+                button.tabIndex = -1;
+                if (copy !== middleCopy) {
+                    button.setAttribute('aria-hidden', 'true');
+                } else {
+                    button.id = nextId(`ui-time-${key}-option`);
+                    button.setAttribute('aria-posinset', String(valueIndex + 1));
+                    button.setAttribute('aria-setsize', String(valueCount));
+                }
+                button.textContent = pad(optionValue);
+                button.addEventListener('click', () => {
+                    selectIndex(index, true);
+                });
+                buttons.push(button);
+                list.appendChild(button);
+            });
+        }
+
+        list.addEventListener('scroll', handleScroll, { passive: true });
+        list.addEventListener('keydown', event => {
+            if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                stepSelection(-1);
+            } else if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                stepSelection(1);
+            } else if (event.key === 'PageUp') {
+                event.preventDefault();
+                stepSelection(-5);
+            } else if (event.key === 'PageDown') {
+                event.preventDefault();
+                stepSelection(5);
+            } else if (event.key === 'Home') {
+                event.preventDefault();
+                selectIndex(valueCount, true);
+            } else if (event.key === 'End') {
+                event.preventDefault();
+                selectIndex(valueCount * 2 - 1, true);
+            }
+        });
+
+        paint(value);
+        wheel.appendChild(list);
+
+        return {
+            element: wheel,
+            focusTarget: list,
+            getValue: () => value,
+            center: () => centerActive(false),
+            destroy() {
+                destroyed = true;
+                window.clearTimeout(settleTimer);
+                if (scrollFrame) cancelAnimationFrame(scrollFrame);
+            },
+        };
+    }
+
     function openTime(input, trigger) {
         const match = /^(\d{2}):(\d{2})/.exec(input.value || '');
         let hour = match ? Number(match[1]) : new Date().getHours();
@@ -564,56 +733,15 @@
         title.textContent = '选择时间';
         const columns = document.createElement('div');
         columns.className = 'ui-time-columns';
-        const hourList = document.createElement('div');
-        hourList.className = 'ui-time-list';
-        hourList.setAttribute('role', 'listbox');
-        hourList.setAttribute('aria-label', '小时');
-        const minuteList = document.createElement('div');
-        minuteList.className = 'ui-time-list';
-        minuteList.setAttribute('role', 'listbox');
-        minuteList.setAttribute('aria-label', '分钟');
-
-        let selectedHour = null;
-        let selectedMinute = null;
-
-        function markSelection() {
-            if (selectedHour) {
-                selectedHour.classList.toggle('is-selected', Number(selectedHour.dataset.value) === hour);
-                selectedHour.setAttribute('aria-selected', String(Number(selectedHour.dataset.value) === hour));
-            }
-            if (selectedMinute) {
-                selectedMinute.classList.toggle('is-selected', Number(selectedMinute.dataset.value) === minute);
-                selectedMinute.setAttribute('aria-selected', String(Number(selectedMinute.dataset.value) === minute));
-            }
-        }
-
-        function option(value, type) {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'ui-time-option';
-            button.dataset.value = String(value);
-            button.setAttribute('role', 'option');
-            button.textContent = pad(value);
-            button.addEventListener('click', () => {
-                if (type === 'hour') hour = value;
-                else minute = value;
-                markSelection();
-            });
-            return button;
-        }
-
-        for (let value = 0; value < 24; value += 1) {
-            const item = option(value, 'hour');
-            hourList.appendChild(item);
-            if (value === hour) selectedHour = item;
-        }
-        for (let value = 0; value < 60; value += 1) {
-            const item = option(value, 'minute');
-            minuteList.appendChild(item);
-            if (value === minute) selectedMinute = item;
-        }
-        markSelection();
-        columns.append(hourList, minuteList);
+        const hours = Array.from({ length: 24 }, (_, value) => value);
+        const minutes = Array.from({ length: 60 }, (_, value) => value);
+        const hourWheel = createTimeWheel(hours, hour, '小时', 'hour', value => {
+            hour = value;
+        });
+        const minuteWheel = createTimeWheel(minutes, minute, '分钟', 'minute', value => {
+            minute = value;
+        });
+        columns.append(hourWheel.element, minuteWheel.element);
 
         const footer = document.createElement('div');
         footer.className = 'ui-time-footer';
@@ -627,7 +755,7 @@
         confirm.className = 'ui-calendar-action';
         confirm.textContent = '确定';
         confirm.addEventListener('click', () => {
-            setNativeValue(input, `${pad(hour)}:${pad(minute)}`);
+            setNativeValue(input, `${pad(hourWheel.getValue())}:${pad(minuteWheel.getValue())}`);
             syncTime(input);
             closePopover({ restoreFocus: true });
         });
@@ -637,14 +765,15 @@
         openPopover(trigger, input, picker, {
             minimumWidth: 276,
             role: 'dialog',
-            focusTarget: selectedHour || hourList.querySelector('button'),
+            focusTarget: hourWheel.focusTarget,
+            onClose() {
+                hourWheel.destroy();
+                minuteWheel.destroy();
+            },
         });
         requestAnimationFrame(() => {
-            [hourList, minuteList].forEach(list => {
-                const selected = list.querySelector('.is-selected');
-                if (!selected) return;
-                list.scrollTop = Math.max(0, selected.offsetTop - list.clientHeight / 2 + selected.offsetHeight / 2);
-            });
+            hourWheel.center();
+            minuteWheel.center();
         });
     }
 

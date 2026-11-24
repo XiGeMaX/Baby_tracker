@@ -4436,21 +4436,65 @@ input[type="number"].input-field::-webkit-outer-spin-button {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-2);
+    --ui-time-option-height: 40px;
+    --ui-time-list-height: 200px;
+}
+
+.ui-time-wheel {
+    position: relative;
+    min-width: 0;
+    isolation: isolate;
+}
+
+.ui-time-wheel::before {
+    content: "";
+    position: absolute;
+    z-index: 0;
+    top: calc(50% - var(--ui-time-option-height) / 2);
+    right: 2px;
+    left: 2px;
+    height: var(--ui-time-option-height);
+    border-block: 1px solid var(--c-accent-border);
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--c-accent) 7%, transparent);
+    pointer-events: none;
 }
 
 .ui-time-list {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    max-height: 220px;
-    padding: 2px;
+    gap: 0;
+    height: var(--ui-time-list-height);
+    padding: calc((var(--ui-time-list-height) - var(--ui-time-option-height)) / 2) 2px;
     overflow-y: auto;
+    scroll-snap-type: y mandatory;
+    scrollbar-width: none;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, black 15%, black 85%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, black 15%, black 85%, transparent 100%);
+}
+
+.ui-time-list::-webkit-scrollbar {
+    display: none;
+}
+
+.ui-time-list:focus-visible {
+    border-radius: var(--radius-control);
+    outline: 2px solid color-mix(in srgb, var(--c-accent) 72%, transparent);
+    outline-offset: -2px;
 }
 
 .ui-time-option {
-    min-height: 36px;
+    display: flex;
+    flex: 0 0 var(--ui-time-option-height);
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: var(--ui-time-option-height);
     border: 1px solid transparent;
     border-radius: var(--radius-control);
     background: transparent;
@@ -4458,7 +4502,16 @@ input[type="number"].input-field::-webkit-outer-spin-button {
     font-family: var(--font-mono);
     font-size: var(--text-label);
     font-variant-numeric: tabular-nums;
+    line-height: 1;
     cursor: pointer;
+    scroll-snap-align: center;
+    scroll-snap-stop: normal;
+    user-select: none;
+    transition:
+        color var(--motion-fast) ease,
+        background-color var(--motion-fast) ease,
+        border-color var(--motion-fast) ease,
+        transform var(--motion-fast) var(--motion-out);
 }
 
 .ui-time-option:hover,
@@ -4474,6 +4527,7 @@ input[type="number"].input-field::-webkit-outer-spin-button {
     background: var(--c-accent);
     color: var(--c-accent-foreground);
     font-weight: var(--weight-semibold);
+    transform: scale(1.02);
 }
 
 .ui-time-footer {

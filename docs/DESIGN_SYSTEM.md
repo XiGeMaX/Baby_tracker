@@ -70,6 +70,7 @@
 - 可见下拉框：使用 `select.input-field`，由 `static/js/theme-controls.js` 提升为 `.ui-select-trigger`。
 - 可见日期框：使用 `input[type="date"].input-field`，提升为 `.ui-date-trigger`。
 - 可见时间框：使用 `input[type="time"].input-field`，提升为 `.ui-time-trigger`。
+- 时间选择必须使用上下循环滚轮，当前值固定在中心并保持明确选中态；点击、滚动和键盘选择后都应平滑吸附到中心。
 - 可见文件框：使用 `input[type="file"].input-field`，提升为 `.ui-file-trigger`。
 - 数字、文本、密码和备注输入使用 `input-field`。
 - 复选框使用已完成主题化的原生输入，不另造不可访问的视觉替身。
