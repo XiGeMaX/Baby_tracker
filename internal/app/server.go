@@ -14,7 +14,7 @@ import (
 )
 
 // Bump when browser-loaded styles or scripts change so open clients fetch matching assets.
-const assetVersion = "2026-11-26.2"
+const assetVersion = "2026-11-26.3"
 
 func (a *App) basePathMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

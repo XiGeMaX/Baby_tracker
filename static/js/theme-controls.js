@@ -11,8 +11,11 @@
 
     let activeTrigger = null;
     let activeControl = null;
+    let activePlacement = null;
     let closeActivePopover = null;
+    let repositionFrame = 0;
     let idCounter = 0;
+    const datePickerWidth = 320;
 
     const nativeSelectValue = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
     const nativeInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
@@ -83,20 +86,32 @@
             label.addEventListener('click', event => {
                 if (event.target.closest('button, a, input, select, textarea')) return;
                 event.preventDefault();
-                trigger.focus();
+                focusWithoutScroll(trigger);
                 trigger.click();
             });
         });
     }
 
-    function positionPopover(trigger, minimumWidth) {
+    function focusWithoutScroll(element) {
+        if (!element || typeof element.focus !== 'function') return;
+        try {
+            element.focus({ preventScroll: true });
+        } catch {
+            element.focus();
+        }
+    }
+
+    function positionPopover(trigger, placement = {}) {
         const margin = 8;
         const gap = 6;
         const rect = trigger.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
+        const preferredWidth = Number(placement.width) || 0;
+        const minimumWidth = Number(placement.minimumWidth) || 0;
+        const targetWidth = preferredWidth || Math.max(rect.width, minimumWidth);
         const width = Math.min(
-            Math.max(rect.width, minimumWidth || 0),
+            targetWidth,
             viewportWidth - margin * 2
         );
         popover.style.width = `${Math.round(width)}px`;
@@ -127,20 +142,52 @@
         popover.style.top = `${Math.round(top)}px`;
     }
 
+    function triggerIsVisible(trigger) {
+        const rect = trigger.getBoundingClientRect();
+        const viewport = window.visualViewport;
+        const left = viewport?.offsetLeft || 0;
+        const top = viewport?.offsetTop || 0;
+        const right = left + (viewport?.width || window.innerWidth);
+        const bottom = top + (viewport?.height || window.innerHeight);
+        return rect.right >= left && rect.left <= right && rect.bottom >= top && rect.top <= bottom;
+    }
+
+    function repositionActivePopover() {
+        if (popover.hidden || !activeTrigger) return;
+        if (!document.contains(activeTrigger) || !triggerIsVisible(activeTrigger)) {
+            closePopover();
+            return;
+        }
+        positionPopover(activeTrigger, activePlacement || {});
+    }
+
+    function schedulePopoverReposition() {
+        if (popover.hidden || !activeTrigger || repositionFrame) return;
+        repositionFrame = requestAnimationFrame(() => {
+            repositionFrame = 0;
+            repositionActivePopover();
+        });
+    }
+
     function closePopover({ restoreFocus = false } = {}) {
         if (closeActivePopover) closeActivePopover();
         const trigger = activeTrigger;
+        if (repositionFrame) {
+            cancelAnimationFrame(repositionFrame);
+            repositionFrame = 0;
+        }
         popover.hidden = true;
         popover.replaceChildren();
         popover.removeAttribute('role');
         activeTrigger = null;
         activeControl = null;
+        activePlacement = null;
         closeActivePopover = null;
         if (trigger) {
             trigger.setAttribute('aria-expanded', 'false');
             trigger.classList.remove('is-open');
         }
-        if (restoreFocus && trigger && document.contains(trigger)) trigger.focus();
+        if (restoreFocus && trigger && document.contains(trigger)) focusWithoutScroll(trigger);
     }
 
     function openPopover(trigger, control, content, options = {}) {
@@ -152,6 +199,10 @@
 
         activeTrigger = trigger;
         activeControl = control;
+        activePlacement = {
+            width: options.width,
+            minimumWidth: options.minimumWidth,
+        };
         closeActivePopover = options.onClose || null;
         trigger.setAttribute('aria-expanded', 'true');
         trigger.classList.add('is-open');
@@ -159,10 +210,10 @@
         popover.hidden = false;
         if (options.role) popover.setAttribute('role', options.role);
         refreshIcons(popover);
-        positionPopover(trigger, options.minimumWidth);
+        positionPopover(trigger, activePlacement);
 
         const focusTarget = options.focusTarget || popover.querySelector('button:not(:disabled), [tabindex="0"]');
-        if (focusTarget) requestAnimationFrame(() => focusTarget.focus());
+        if (focusTarget) requestAnimationFrame(() => focusWithoutScroll(focusTarget));
     }
 
     function setNativeValue(control, value) {
@@ -393,7 +444,7 @@
             closePopover({ restoreFocus: true });
         }
 
-        function render() {
+        function render(focusTarget = 'selected') {
             const calendar = document.createElement('div');
             calendar.className = 'ui-calendar';
 
@@ -418,7 +469,7 @@
                     viewMonth = 11;
                     viewYear -= 1;
                 }
-                render();
+                render('previous');
             });
             next.addEventListener('click', () => {
                 viewMonth += 1;
@@ -426,7 +477,7 @@
                     viewMonth = 0;
                     viewYear += 1;
                 }
-                render();
+                render('next');
             });
             header.append(previous, title, next);
 
@@ -440,6 +491,8 @@
 
             const grid = document.createElement('div');
             grid.className = 'ui-calendar-grid';
+            grid.setAttribute('role', 'group');
+            grid.setAttribute('aria-label', `${viewYear}年${viewMonth + 1}月`);
             const firstDay = new Date(viewYear, viewMonth, 1);
             const offset = (firstDay.getDay() + 6) % 7;
             for (let i = 0; i < offset; i += 1) {
@@ -457,11 +510,18 @@
                 button.className = 'ui-calendar-day';
                 button.textContent = String(day);
                 button.setAttribute('aria-label', formatDateDisplay(value));
+                button.setAttribute('aria-pressed', String(value === input.value));
                 button.classList.toggle('is-today', value === today);
                 button.classList.toggle('is-selected', value === input.value);
                 button.disabled = !dateAllowed(input, value);
                 button.addEventListener('click', () => selectDate(value));
                 grid.appendChild(button);
+            }
+            while (grid.children.length < 42) {
+                const blank = document.createElement('span');
+                blank.className = 'ui-calendar-blank';
+                blank.setAttribute('aria-hidden', 'true');
+                grid.appendChild(blank);
             }
 
             const footer = document.createElement('div');
@@ -485,20 +545,34 @@
             calendar.append(header, weekdays, grid, footer);
             popover.replaceChildren(calendar);
             popover.setAttribute('role', 'dialog');
+            popover.setAttribute('aria-label', '选择日期');
             refreshIcons(popover);
-            positionPopover(trigger, 316);
+            positionPopover(trigger, activePlacement);
             requestAnimationFrame(() => {
+                if (popover.hidden || activeTrigger !== trigger) return;
                 const selected = popover.querySelector('.ui-calendar-day.is-selected:not(:disabled)');
                 const current = popover.querySelector('.ui-calendar-day.is-today:not(:disabled)');
-                (selected || current || popover.querySelector('.ui-calendar-day:not(:disabled)'))?.focus();
+                const navigation = focusTarget === 'previous'
+                    ? popover.querySelector('.ui-calendar-nav[aria-label="上个月"]')
+                    : focusTarget === 'next'
+                        ? popover.querySelector('.ui-calendar-nav[aria-label="下个月"]')
+                        : null;
+                focusWithoutScroll(
+                    navigation
+                    || selected
+                    || current
+                    || popover.querySelector('.ui-calendar-day:not(:disabled)')
+                );
             });
         }
 
         popover.replaceChildren();
         popover.hidden = false;
         popover.setAttribute('role', 'dialog');
+        popover.setAttribute('aria-label', '选择日期');
         activeTrigger = trigger;
         activeControl = input;
+        activePlacement = { width: datePickerWidth };
         trigger.setAttribute('aria-expanded', 'true');
         trigger.classList.add('is-open');
         render();
@@ -633,7 +707,7 @@
         function selectIndex(nextIndex, smooth) {
             applyIndex(nextIndex);
             scrollToIndex(nextIndex, smooth ? 'smooth' : 'auto');
-            list.focus({ preventScroll: true });
+            focusWithoutScroll(list);
         }
 
         function stepSelection(delta) {
@@ -907,10 +981,10 @@
         }
     });
 
-    window.addEventListener('resize', () => closePopover());
+    window.addEventListener('resize', schedulePopoverReposition);
     window.addEventListener('scroll', event => {
         if (popover.contains(event.target)) return;
-        closePopover();
+        schedulePopoverReposition();
     }, true);
     document.addEventListener('reset', event => {
         const form = event.target;

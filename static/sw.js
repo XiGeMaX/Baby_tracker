@@ -1,4 +1,4 @@
-const CACHE_NAME = 'baby-tracker-v10';
+const CACHE_NAME = 'baby-tracker-v11';
 const APP_BASE = new URL(self.registration.scope).pathname.replace(/\/+$/, '');
 const appUrl = path => `${APP_BASE}${path}`;
 const STATIC_ASSETS = [

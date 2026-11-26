@@ -16,6 +16,7 @@ let _growthHistoryVisibleCount = 5;
 let _growthTableExpanded = false;
 let _trendPopoverTrigger = null;
 let _trendPopoverTimer = null;
+let _trendPopoverPositionFrame = 0;
 let _trendCalendarCursor = null;
 
 const GROWTH_MODE_STORAGE_KEY = 'baby-tracker-growth-mode';
@@ -240,6 +241,7 @@ function openRangePopover(trigger, selectID) {
 
     showTrendPopover(trigger, content, 168, 'listbox', title);
     popover.onclick = event => {
+        event.stopPropagation();
         const option = event.target.closest('[data-range-value]');
         if (!option) return;
         select.value = option.dataset.rangeValue;
@@ -284,8 +286,9 @@ function renderDatePopover(trigger, inputID, focusTarget) {
     const firstDay = new Date(year, month, 1);
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const cells = [];
-    for (let index = 0; index < firstDay.getDay(); index += 1) {
-        cells.push('<span class="trend-calendar-blank" aria-hidden="true"></span>');
+    const offset = (firstDay.getDay() + 6) % 7;
+    for (let index = 0; index < offset; index += 1) {
+        cells.push('<span class="ui-calendar-blank" aria-hidden="true"></span>');
     }
     for (let day = 1; day <= daysInMonth; day += 1) {
         const date = new Date(year, month, day);
@@ -293,37 +296,43 @@ function renderDatePopover(trigger, inputID, focusTarget) {
         const selected = selectedDate && toDateKey(selectedDate) === key;
         const isToday = toDateKey(todayDate) === key;
         cells.push(`
-            <button type="button" class="trend-calendar-day ${selected ? 'is-selected' : ''} ${isToday ? 'is-today' : ''}"
+            <button type="button" class="ui-calendar-day ${selected ? 'is-selected' : ''} ${isToday ? 'is-today' : ''}"
                 data-calendar-date="${key}" aria-label="${year}年${month + 1}月${day}日"
                 aria-pressed="${String(Boolean(selected))}">${day}</button>
         `);
     }
+    while (cells.length < 42) {
+        cells.push('<span class="ui-calendar-blank" aria-hidden="true"></span>');
+    }
 
     const title = trigger.dataset.popoverTitle || '选择日期';
     const content = `
-        <div class="trend-calendar-header">
-            <button type="button" class="trend-calendar-nav" data-calendar-action="prev" aria-label="上个月">
-                <i data-lucide="chevron-left" class="h-4 w-4"></i>
-            </button>
-            <strong class="trend-calendar-title">${year}年${month + 1}月</strong>
-            <button type="button" class="trend-calendar-nav" data-calendar-action="next" aria-label="下个月">
-                <i data-lucide="chevron-right" class="h-4 w-4"></i>
-            </button>
-        </div>
-        <div class="trend-calendar-weekdays" aria-hidden="true">
-            <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
-        </div>
-        <div class="trend-calendar-grid" role="grid" aria-label="${year}年${month + 1}月">
-            ${cells.join('')}
-        </div>
-        <div class="trend-calendar-footer">
-            <button type="button" class="trend-text-button" data-calendar-action="today">今天</button>
-            <button type="button" class="trend-text-button" data-calendar-action="cancel">取消</button>
+        <div class="ui-calendar">
+            <div class="ui-calendar-header">
+                <button type="button" class="ui-calendar-nav" data-calendar-action="prev" aria-label="上个月">
+                    <i data-lucide="chevron-left" class="h-4 w-4"></i>
+                </button>
+                <strong class="ui-calendar-title">${year}年${month + 1}月</strong>
+                <button type="button" class="ui-calendar-nav" data-calendar-action="next" aria-label="下个月">
+                    <i data-lucide="chevron-right" class="h-4 w-4"></i>
+                </button>
+            </div>
+            <div class="ui-calendar-weekdays" aria-hidden="true">
+                <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+            </div>
+            <div class="ui-calendar-grid" role="group" aria-label="${year}年${month + 1}月">
+                ${cells.join('')}
+            </div>
+            <div class="ui-calendar-footer">
+                <button type="button" class="ui-calendar-action" data-calendar-action="today">今天</button>
+                <button type="button" class="ui-calendar-action" data-calendar-action="cancel">取消</button>
+            </div>
         </div>
     `;
 
-    showTrendPopover(trigger, content, 292, 'dialog', title);
+    showTrendPopover(trigger, content, 320, 'dialog', title);
     popover.onclick = event => {
+        event.stopPropagation();
         const action = event.target.closest('[data-calendar-action]')?.dataset.calendarAction;
         if (action === 'prev' || action === 'next') {
             _trendCalendarCursor = new Date(year, month + (action === 'next' ? 1 : -1), 1);
@@ -359,8 +368,8 @@ function renderDatePopover(trigger, inputID, focusTarget) {
         if (focusTarget === 'prev' || focusTarget === 'next') {
             target = popover.querySelector(`[data-calendar-action="${focusTarget}"]`);
         } else {
-            target = popover.querySelector('.trend-calendar-day.is-selected')
-                || popover.querySelector('.trend-calendar-day.is-today')
+            target = popover.querySelector('.ui-calendar-day.is-selected')
+                || popover.querySelector('.ui-calendar-day.is-today')
                 || popover.querySelector('[data-calendar-date]');
         }
         target?.focus({ preventScroll: true });
@@ -399,6 +408,10 @@ function closeTrendPopover(restoreFocus = false) {
     const popover = document.getElementById('trend-popover');
     if (!popover) return;
     clearTimeout(_trendPopoverTimer);
+    if (_trendPopoverPositionFrame) {
+        cancelAnimationFrame(_trendPopoverPositionFrame);
+        _trendPopoverPositionFrame = 0;
+    }
     if (trigger) {
         trigger.classList.remove('is-open');
         trigger.setAttribute('aria-expanded', 'false');
@@ -420,9 +433,22 @@ function closeTrendPopover(restoreFocus = false) {
 function positionTrendPopover(trigger, preferredWidth) {
     const popover = document.getElementById('trend-popover');
     if (!popover) return;
-    const margin = 12;
-    const gap = 8;
+    const margin = 8;
+    const gap = 6;
     const rect = trigger.getBoundingClientRect();
+    const viewport = window.visualViewport;
+    const viewportLeft = viewport?.offsetLeft || 0;
+    const viewportTop = viewport?.offsetTop || 0;
+    const viewportRight = viewportLeft + (viewport?.width || window.innerWidth);
+    const viewportBottom = viewportTop + (viewport?.height || window.innerHeight);
+    const triggerVisible = rect.right >= viewportLeft
+        && rect.left <= viewportRight
+        && rect.bottom >= viewportTop
+        && rect.top <= viewportBottom;
+    if (!triggerVisible) {
+        closeTrendPopover();
+        return;
+    }
     const width = Math.min(preferredWidth, window.innerWidth - margin * 2);
     popover.style.width = `${width}px`;
     popover.style.left = '0px';
@@ -437,6 +463,17 @@ function positionTrendPopover(trigger, preferredWidth) {
     top = Math.max(margin, top);
     popover.style.left = `${Math.round(left)}px`;
     popover.style.top = `${Math.round(top)}px`;
+}
+
+function scheduleTrendPopoverReposition() {
+    if (!_trendPopoverTrigger || _trendPopoverPositionFrame) return;
+    _trendPopoverPositionFrame = requestAnimationFrame(() => {
+        _trendPopoverPositionFrame = 0;
+        if (!_trendPopoverTrigger) return;
+        const popover = document.getElementById('trend-popover');
+        const width = Number.parseFloat(popover?.style.width) || 168;
+        positionTrendPopover(_trendPopoverTrigger, width);
+    });
 }
 
 function parseDateKey(value) {
@@ -466,13 +503,8 @@ document.addEventListener('keydown', event => {
     closeTrendPopover(true);
 });
 
-window.addEventListener('resize', () => closeTrendPopover());
-window.addEventListener('scroll', () => {
-    if (!_trendPopoverTrigger) return;
-    const popover = document.getElementById('trend-popover');
-    const width = Number.parseFloat(popover?.style.width) || 168;
-    positionTrendPopover(_trendPopoverTrigger, width);
-}, { capture: true, passive: true });
+window.addEventListener('resize', scheduleTrendPopoverReposition);
+window.addEventListener('scroll', scheduleTrendPopoverReposition, { capture: true, passive: true });
 
 // ── Data loading ──────────────────────────────────────────
 async function loadTrends() {
