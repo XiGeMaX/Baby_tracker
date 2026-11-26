@@ -5,24 +5,35 @@ const GROWTH_TAB_TRANSITION_MS = 280;
 let _currentTab = 'schedule';
 let _healthLoaded = false;
 let _countdownLoaded = false;
+let _countdownDataLoaded = false;
 let _scheduleLoaded = false;
+let _vaccineListRendered = false;
+let _vaccineRequest = null;
+let _scheduleRequest = null;
+let _vaccineSummaryTimer = null;
 let _growthTabsReady = false;
 let _growthTabAnimations = [];
 let _growthTabSwitchToken = 0;
 
 function initVaccine() {
     // 重置 Tab 状态及事件委托标志，保证 SPA 重新进入时可重入
+    clearTimeout(_vaccineSummaryTimer);
+    vaccineData = null;
+    healthData = null;
     _currentTab = 'schedule';
     _healthLoaded = false;
     _countdownLoaded = false;
+    _countdownDataLoaded = false;
     _vaccineDelegateBound = false;
     _scheduleLoaded = false;
+    _vaccineListRendered = false;
+    _vaccineRequest = null;
+    _scheduleRequest = null;
+    _vaccineSummaryTimer = null;
     _growthTabsReady = false;
     _growthTabAnimations = [];
     bindGrowthTabNavigation();
     switchTab('schedule', { immediate: true });
-    loadVaccine();
-    loadHealth();
 }
 
 document.addEventListener('DOMContentLoaded', initVaccine);
@@ -43,10 +54,24 @@ function switchTab(tab, options = {}) {
     }
     _growthTabsReady = true;
 
-    // 各页签只负责补齐自己的数据；首次进入前会预加载，避免切换时内容突然撑开。
+    // 各页签按需加载并渲染；隐藏页签不提前创建长列表，避免切页时集中布局。
     if (tab === 'schedule' && !_scheduleLoaded) initCalendar();
+    if (tab === 'vaccine') {
+        clearTimeout(_vaccineSummaryTimer);
+        _vaccineSummaryTimer = null;
+        if (vaccineData && _vaccineListRendered) updateVaccineAge();
+        else if (vaccineData) paintVaccineData();
+        else loadVaccine();
+    }
     if (tab === 'health' && !_healthLoaded) loadHealth();
-    if (tab === 'countdown' && !_countdownLoaded) loadCountdown();
+    if (tab === 'countdown' && !_countdownLoaded) {
+        if (_countdownDataLoaded) {
+            renderCountdownList();
+            _countdownLoaded = true;
+        } else {
+            loadCountdown();
+        }
+    }
 }
 
 function updateGrowthTabChrome(tab, animateIndicator) {
@@ -231,22 +256,53 @@ function bindGrowthTabNavigation() {
     document.fonts?.ready.then(() => positionGrowthTabIndicator(false));
 }
 
-async function loadVaccine() {
+async function loadVaccine({ paint = true } = {}) {
+    const request = _vaccineRequest || api('/api/vaccine/schedule');
+    _vaccineRequest = request;
     try {
-        vaccineData = await api('/api/vaccine/schedule');
-        if (vaccineData.error && !vaccineData.overview) {
-            document.getElementById('vaccine-overview').innerHTML =
-                `<div class="card"><p class="text-text-muted text-sm text-center">${esc(vaccineData.error)}</p></div>`;
-            document.getElementById('vaccine-list').innerHTML = '';
-            document.getElementById('vaccine-age').textContent = '';
-            return;
-        }
-        renderOverview();
-        renderList();
+        vaccineData = await request;
+        if (paint) paintVaccineData();
+        else updateVaccineAge();
     } catch (e) {
         console.error('加载疫苗数据失败:', e);
-        document.getElementById('vaccine-overview').innerHTML =
-            `<div class="card"><p class="text-text-muted text-sm text-center">${esc(e.message || '加载失败')}</p></div>`;
+        if (paint) paintVaccineError(e.message || '加载失败');
+    } finally {
+        if (_vaccineRequest === request) _vaccineRequest = null;
+    }
+}
+
+function updateVaccineAge() {
+    const age = document.getElementById('vaccine-age');
+    if (!age) return;
+    const overview = vaccineData?.overview;
+    age.textContent = overview
+        ? `${overview.age_months}月龄 (${overview.age_days}天)`
+        : '';
+}
+
+function paintVaccineError(message) {
+    const overview = document.getElementById('vaccine-overview');
+    const list = document.getElementById('vaccine-list');
+    if (overview) {
+        overview.innerHTML = `<div class="card"><p class="text-text-muted text-sm text-center">${esc(message)}</p></div>`;
+    }
+    if (list) list.innerHTML = '';
+    const age = document.getElementById('vaccine-age');
+    if (age) age.textContent = '';
+    _vaccineListRendered = false;
+}
+
+function paintVaccineData() {
+    if (!vaccineData) return;
+    if (vaccineData.error && !vaccineData.overview) {
+        paintVaccineError(vaccineData.error);
+        return;
+    }
+    renderOverview();
+    _vaccineListRendered = false;
+    if (_currentTab === 'vaccine') {
+        renderList();
+        _vaccineListRendered = true;
     }
 }
 
@@ -940,6 +996,7 @@ async function fetchCountdownData() {
 async function loadCountdown() {
     try {
         countdownData = await fetchCountdownData();
+        _countdownDataLoaded = true;
         renderCountdownList();
         _countdownLoaded = true;
     } catch (e) {
@@ -1077,25 +1134,50 @@ function formatDateISO(d) {
 }
 
 async function initCalendar() {
-    const now = new Date();
-    calYear = now.getFullYear();
-    calMonth = now.getMonth();
-    selectedDate = formatDateISO(now);
-    const dp = document.getElementById('schedule-date-picker');
-    if (dp) dp.value = selectedDate;
-    updateDateDisplay(selectedDate);
-    recordDates.clear();
-    vaccineVaccinatedDates.clear();
-    vaccineOverdueDates.clear();
-    vaccineUpcomingDates.clear();
-    healthCompletedDates.clear();
-    healthPlannedDates.clear();
-    countdownDates.clear();
-    await Promise.all([loadRecordDates(), loadVaccineDates(), loadHealthDates(), loadCountdownDates()]);
-    _scheduleLoaded = true;
-    renderCalendar();
-    updateDateDiffLabel(selectedDate);
-    loadRecords(selectedDate);
+    if (_scheduleRequest) return _scheduleRequest;
+    const request = (async () => {
+        const now = new Date();
+        calYear = now.getFullYear();
+        calMonth = now.getMonth();
+        selectedDate = formatDateISO(now);
+        const dp = document.getElementById('schedule-date-picker');
+        if (dp) dp.value = selectedDate;
+        updateDateDisplay(selectedDate);
+        recordDates.clear();
+        vaccineVaccinatedDates.clear();
+        vaccineOverdueDates.clear();
+        vaccineUpcomingDates.clear();
+        healthCompletedDates.clear();
+        healthPlannedDates.clear();
+        countdownDates.clear();
+        renderCalendar();
+        updateDateDiffLabel(selectedDate);
+        scheduleVaccineSummary();
+        await Promise.all([loadRecordDates(), loadVaccineDates(), loadHealthDates(), loadCountdownDates()]);
+        _scheduleLoaded = true;
+        renderCalendar();
+        updateDateDiffLabel(selectedDate);
+        requestAnimationFrame(() => {
+            if (selectedDate) loadRecords(selectedDate);
+        });
+    })();
+    _scheduleRequest = request;
+    try {
+        return await request;
+    } finally {
+        if (_scheduleRequest === request) _scheduleRequest = null;
+    }
+}
+
+function scheduleVaccineSummary() {
+    if (vaccineData || _vaccineRequest || _vaccineSummaryTimer !== null) {
+        if (vaccineData) updateVaccineAge();
+        return;
+    }
+    _vaccineSummaryTimer = window.setTimeout(() => {
+        _vaccineSummaryTimer = null;
+        loadVaccine({ paint: false });
+    }, 160);
 }
 
 async function loadRecordDates() {
@@ -1127,8 +1209,7 @@ async function loadCountdownDates() {
     try {
         const list = await fetchCountdownData();
         countdownData = list;
-        _countdownLoaded = true;
-        renderCountdownList();
+        _countdownDataLoaded = true;
         countdownDates.clear();
         list.forEach(c => {
             if (!countdownDates.has(c.target_date)) {
@@ -1136,6 +1217,10 @@ async function loadCountdownDates() {
             }
             countdownDates.get(c.target_date).push(c);
         });
+        if (_currentTab === 'countdown') {
+            renderCountdownList();
+            _countdownLoaded = true;
+        }
     } catch (e) { /* ignore */ }
 }
 

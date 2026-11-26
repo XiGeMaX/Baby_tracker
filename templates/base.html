@@ -300,14 +300,7 @@
         document.addEventListener('click', function(e) {
             const fabLink = e.target.closest('[data-fab-link]');
             if (fabLink && fabOpen) {
-                e.preventDefault();
-                const href = fabLink.getAttribute('href');
                 fabClose();
-                if (typeof SpaRouter !== 'undefined') {
-                    SpaRouter.navigate(href);
-                } else {
-                    requestAnimationFrame(() => { window.location.href = href; });
-                }
             }
         });
     </script>

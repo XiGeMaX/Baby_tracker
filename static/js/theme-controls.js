@@ -616,11 +616,18 @@
             scrollToIndex(activeIndex, smooth ? 'smooth' : 'auto');
         }
 
-        function keepInMiddleCycle() {
+        function normalizeToMiddleCycle() {
             const height = cycleHeight();
-            if (!height) return;
-            if (list.scrollTop < height) list.scrollTop += height;
-            else if (list.scrollTop >= height * 2) list.scrollTop -= height;
+            if (!height) return false;
+            if (list.scrollTop < height) {
+                list.scrollTop += height;
+                return true;
+            }
+            if (list.scrollTop >= height * 2) {
+                list.scrollTop -= height;
+                return true;
+            }
+            return false;
         }
 
         function selectIndex(nextIndex, smooth) {
@@ -630,8 +637,7 @@
         }
 
         function stepSelection(delta) {
-            const nextValue = (value + delta + valueCount) % valueCount;
-            const nextIndex = middleCopy * valueCount + nextValue;
+            const nextIndex = activeIndex + delta;
             selectIndex(nextIndex, true);
         }
 
@@ -640,16 +646,15 @@
             scrollFrame = requestAnimationFrame(() => {
                 scrollFrame = 0;
                 if (destroyed) return;
-                keepInMiddleCycle();
                 const nextIndex = Math.round(list.scrollTop / optionStep());
                 applyIndex(nextIndex);
                 window.clearTimeout(settleTimer);
                 settleTimer = window.setTimeout(() => {
                     if (destroyed) return;
-                    keepInMiddleCycle();
+                    normalizeToMiddleCycle();
                     const settledIndex = Math.round(list.scrollTop / optionStep());
+                    applyIndex(settledIndex);
                     if (Math.abs(list.scrollTop - settledIndex * optionStep()) > 0.5) {
-                        applyIndex(settledIndex);
                         scrollToIndex(settledIndex, 'smooth');
                     }
                 }, 120);

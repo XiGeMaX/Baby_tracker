@@ -3248,6 +3248,71 @@ body.app-modal-open {
 }
 
 /* ── Shared Motion ───────────────────────────────────── */
+html[data-spa-direction="forward"] {
+    --spa-page-enter-x: 12px;
+    --spa-page-exit-x: -8px;
+}
+
+html[data-spa-direction="backward"] {
+    --spa-page-enter-x: -12px;
+    --spa-page-exit-x: 8px;
+}
+
+@supports (view-transition-name: spa-content) {
+    .motion-ready #spa-content {
+        view-transition-name: spa-content;
+    }
+
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation: none;
+    }
+
+    ::view-transition-group(root),
+    ::view-transition-group(spa-content) {
+        animation: none;
+    }
+
+    ::view-transition-image-pair(spa-content) {
+        isolation: isolate;
+    }
+
+    ::view-transition-old(spa-content),
+    ::view-transition-new(spa-content) {
+        mix-blend-mode: normal;
+    }
+
+    ::view-transition-old(spa-content) {
+        animation: spa-page-out 170ms var(--motion-exit) both;
+    }
+
+    ::view-transition-new(spa-content) {
+        animation: spa-page-in 240ms var(--motion-out) both;
+    }
+}
+
+@keyframes spa-page-out {
+    from {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+    to {
+        opacity: 0;
+        transform: translate3d(var(--spa-page-exit-x, -8px), 0, 0);
+    }
+}
+
+@keyframes spa-page-in {
+    from {
+        opacity: 0;
+        transform: translate3d(var(--spa-page-enter-x, 12px), 0, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
 .fade-in {
     animation: fadeIn var(--motion-slow) var(--motion-out) both;
 }
@@ -3515,6 +3580,10 @@ input[type="time"].input-field::-webkit-date-and-time-value {
     flex-direction: column;
     gap: var(--space-5);
     min-width: 0;
+}
+
+.admin-page {
+    gap: var(--space-4);
 }
 
 .app-page-header,
@@ -4643,6 +4712,10 @@ input[type="time"].input-field::-webkit-calendar-picker-indicator {
         gap: var(--space-4);
     }
 
+    .admin-page {
+        gap: var(--space-3);
+    }
+
     .page-title,
     h1.text-xl,
     .trends-title {
@@ -4722,6 +4795,11 @@ input[type="time"].input-field::-webkit-calendar-picker-indicator {
     }
     .fade-in {
         animation: none;
+    }
+    ::view-transition-old(spa-content),
+    ::view-transition-new(spa-content) {
+        animation-duration: 1ms !important;
+        animation-delay: 0ms !important;
     }
 }
 

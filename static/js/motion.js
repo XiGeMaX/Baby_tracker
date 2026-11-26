@@ -46,43 +46,32 @@
         return animation.finished.catch(() => {});
     }
 
-    function pageEnter(element) {
+    function pageEnter(element, direction) {
         if (!element) return Promise.resolve();
-        element.querySelectorAll('[data-lucide]').forEach(icon => icon.style.opacity = '');
         if (reducedMotion.matches) {
-            return settle(animate(element, [
-                { opacity: 0.72 },
-                { opacity: 1 }
-            ], {
-                duration: 150,
-                easing: 'ease-out'
-            }));
+            return Promise.resolve();
         }
+        const enterX = direction === 'backward' ? -6 : 6;
         return settle(animate(element, [
-            { opacity: 0.18, transform: 'translate3d(0, 8px, 0) scale(0.997)', filter: 'blur(2px)' },
-            { opacity: 1, transform: 'translate3d(0, 0, 0) scale(1)', filter: 'blur(0)' }
+            { opacity: 0.82, transform: `translate3d(${enterX}px, 0, 0)` },
+            { opacity: 1, transform: 'translate3d(0, 0, 0)' }
         ], {
-            duration: 280,
+            duration: 190,
             easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
         }));
     }
 
-    function pageLeave(element) {
+    function pageLeave(element, direction) {
         if (!element) return Promise.resolve();
         if (reducedMotion.matches) {
-            return settle(animate(element, [
-                { opacity: 1 },
-                { opacity: 0.72 }
-            ], {
-                duration: 90,
-                easing: 'ease-in'
-            }));
+            return Promise.resolve();
         }
+        const exitX = direction === 'backward' ? 4 : -4;
         return settle(animate(element, [
-            { opacity: 1, transform: 'translate3d(0, 0, 0) scale(1)', filter: 'blur(0)' },
-            { opacity: 0.42, transform: 'translate3d(0, -4px, 0) scale(0.998)', filter: 'blur(1.5px)' }
+            { opacity: 1, transform: 'translate3d(0, 0, 0)' },
+            { opacity: 0.86, transform: `translate3d(${exitX}px, 0, 0)` }
         ], {
-            duration: 140,
+            duration: 90,
             easing: 'cubic-bezier(0.4, 0, 1, 1)'
         }));
     }
