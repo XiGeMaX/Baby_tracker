@@ -25,13 +25,13 @@
                     <button type="button" class="range-trigger" id="growth-days-trigger"
                         aria-haspopup="listbox" aria-expanded="false"
                         data-popover-title="成长曲线范围" onclick="openGrowthDaysPicker(event)">
-                        <span class="range-display" id="growth-days-display">30天</span>
+                        <span class="range-display" id="growth-days-display">半年</span>
                         <i data-lucide="chevron-down" class="h-3 w-3"></i>
                     </button>
                     <select id="growth-days" class="range-native" tabindex="-1" aria-hidden="true" onchange="onGrowthRangeChange(this.value)">
-                        <option value="30" selected>30天</option>
+                        <option value="30">30天</option>
                         <option value="90">90天</option>
-                        <option value="180">半年</option>
+                        <option value="180" selected>半年</option>
                         <option value="365">1年</option>
                         <option value="1095">3年</option>
                         <option value="1825">5年</option>

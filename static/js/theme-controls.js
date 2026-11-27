@@ -436,6 +436,7 @@
         const initial = selectedDate || new Date();
         let viewYear = initial.getFullYear();
         let viewMonth = initial.getMonth();
+        let quickMode = false;
 
         function selectDate(value) {
             if (!dateAllowed(input, value)) return;
@@ -444,7 +445,28 @@
             closePopover({ restoreFocus: true });
         }
 
-        function render(focusTarget = 'selected') {
+        function createFooter() {
+            const footer = document.createElement('div');
+            footer.className = 'ui-calendar-footer';
+            const todayButton = document.createElement('button');
+            todayButton.type = 'button';
+            todayButton.className = 'ui-calendar-action';
+            todayButton.textContent = '今天';
+            todayButton.addEventListener('click', () => selectDate(formatDateInput(new Date())));
+            const clearButton = document.createElement('button');
+            clearButton.type = 'button';
+            clearButton.className = 'ui-calendar-action';
+            clearButton.textContent = '清除';
+            clearButton.addEventListener('click', () => {
+                setNativeValue(input, '');
+                syncDate(input);
+                closePopover({ restoreFocus: true });
+            });
+            footer.append(todayButton, clearButton);
+            return footer;
+        }
+
+        function renderDate(focusTarget = 'selected') {
             const calendar = document.createElement('div');
             calendar.className = 'ui-calendar';
 
@@ -455,9 +477,14 @@
             previous.className = 'ui-calendar-nav';
             previous.setAttribute('aria-label', '上个月');
             previous.append(icon('chevron-left'));
-            const title = document.createElement('div');
-            title.className = 'ui-calendar-title';
-            title.textContent = `${viewYear}年${viewMonth + 1}月`;
+            const title = document.createElement('button');
+            title.type = 'button';
+            title.className = 'ui-calendar-title ui-calendar-title-button';
+            title.setAttribute('aria-expanded', 'false');
+            title.setAttribute('aria-label', `快速调整年月，当前 ${viewYear}年${viewMonth + 1}月`);
+            const titleText = document.createElement('span');
+            titleText.textContent = `${viewYear}年${viewMonth + 1}月`;
+            title.append(titleText, icon('chevron-down'));
             const next = document.createElement('button');
             next.type = 'button';
             next.className = 'ui-calendar-nav';
@@ -469,7 +496,7 @@
                     viewMonth = 11;
                     viewYear -= 1;
                 }
-                render('previous');
+                renderDate('previous');
             });
             next.addEventListener('click', () => {
                 viewMonth += 1;
@@ -477,7 +504,11 @@
                     viewMonth = 0;
                     viewYear += 1;
                 }
-                render('next');
+                renderDate('next');
+            });
+            title.addEventListener('click', () => {
+                quickMode = true;
+                renderQuick('year');
             });
             header.append(previous, title, next);
 
@@ -524,25 +555,7 @@
                 grid.appendChild(blank);
             }
 
-            const footer = document.createElement('div');
-            footer.className = 'ui-calendar-footer';
-            const todayButton = document.createElement('button');
-            todayButton.type = 'button';
-            todayButton.className = 'ui-calendar-action';
-            todayButton.textContent = '今天';
-            todayButton.addEventListener('click', () => selectDate(today));
-            const clearButton = document.createElement('button');
-            clearButton.type = 'button';
-            clearButton.className = 'ui-calendar-action';
-            clearButton.textContent = '清除';
-            clearButton.addEventListener('click', () => {
-                setNativeValue(input, '');
-                syncDate(input);
-                closePopover({ restoreFocus: true });
-            });
-            footer.append(todayButton, clearButton);
-
-            calendar.append(header, weekdays, grid, footer);
+            calendar.append(header, weekdays, grid, createFooter());
             popover.replaceChildren(calendar);
             popover.setAttribute('role', 'dialog');
             popover.setAttribute('aria-label', '选择日期');
@@ -556,7 +569,9 @@
                     ? popover.querySelector('.ui-calendar-nav[aria-label="上个月"]')
                     : focusTarget === 'next'
                         ? popover.querySelector('.ui-calendar-nav[aria-label="下个月"]')
-                        : null;
+                        : focusTarget === 'title'
+                            ? popover.querySelector('.ui-calendar-title-button')
+                            : null;
                 focusWithoutScroll(
                     navigation
                     || selected
@@ -564,6 +579,148 @@
                     || popover.querySelector('.ui-calendar-day:not(:disabled)')
                 );
             });
+        }
+
+        function renderQuick(focusTarget = 'year') {
+            const calendar = document.createElement('div');
+            calendar.className = 'ui-calendar ui-calendar-quick';
+
+            const header = document.createElement('div');
+            header.className = 'ui-calendar-header';
+            const back = document.createElement('button');
+            back.type = 'button';
+            back.className = 'ui-calendar-nav';
+            back.setAttribute('aria-label', '返回日期选择');
+            back.append(icon('chevron-left'));
+            back.addEventListener('click', () => {
+                quickMode = false;
+                renderDate('title');
+            });
+            const title = document.createElement('div');
+            title.className = 'ui-calendar-title';
+            title.textContent = '调整年月';
+            const spacer = document.createElement('span');
+            spacer.className = 'ui-calendar-nav-spacer';
+            spacer.setAttribute('aria-hidden', 'true');
+            header.append(back, title, spacer);
+
+            const body = document.createElement('div');
+            body.className = 'ui-calendar-quick-body';
+
+            const yearList = document.createElement('div');
+            yearList.className = 'ui-calendar-year-list';
+            yearList.setAttribute('role', 'listbox');
+            yearList.setAttribute('aria-label', '年份');
+            const currentYear = new Date().getFullYear();
+            const firstYear = Math.min(1900, currentYear - 100);
+            const lastYear = Math.max(2100, currentYear + 20);
+            for (let year = firstYear; year <= lastYear; year += 1) {
+                const yearButton = document.createElement('button');
+                yearButton.type = 'button';
+                yearButton.className = 'ui-calendar-year-option';
+                yearButton.textContent = String(year);
+                yearButton.dataset.calendarYear = String(year);
+                yearButton.tabIndex = year === viewYear ? 0 : -1;
+                yearButton.setAttribute('role', 'option');
+                yearButton.setAttribute('aria-selected', String(year === viewYear));
+                yearButton.classList.toggle('is-selected', year === viewYear);
+                yearButton.addEventListener('click', () => {
+                    viewYear = year;
+                    renderQuick('year');
+                });
+                yearList.appendChild(yearButton);
+            }
+            yearList.addEventListener('keydown', event => {
+                if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const options = [...yearList.querySelectorAll('[data-calendar-year]')];
+                const current = options.indexOf(document.activeElement);
+                let next = current;
+                if (event.key === 'Home') next = 0;
+                if (event.key === 'End') next = options.length - 1;
+                if (event.key === 'ArrowDown') next = Math.min(options.length - 1, current + 1);
+                if (event.key === 'ArrowUp') next = Math.max(0, current - 1);
+                focusWithoutScroll(options[next]);
+            });
+            yearList.addEventListener('focusin', event => {
+                const focused = event.target.closest('[data-calendar-year]');
+                if (!focused) return;
+                yearList.querySelectorAll('[data-calendar-year]').forEach(option => {
+                    option.tabIndex = option === focused ? 0 : -1;
+                });
+            });
+
+            const monthGrid = document.createElement('div');
+            monthGrid.className = 'ui-calendar-month-grid';
+            monthGrid.setAttribute('role', 'group');
+            monthGrid.setAttribute('aria-label', '月份');
+            for (let month = 0; month < 12; month += 1) {
+                const monthButton = document.createElement('button');
+                monthButton.type = 'button';
+                monthButton.className = 'ui-calendar-month-option';
+                monthButton.textContent = `${month + 1}月`;
+                monthButton.dataset.calendarMonth = String(month);
+                monthButton.tabIndex = month === viewMonth ? 0 : -1;
+                monthButton.setAttribute('aria-pressed', String(month === viewMonth));
+                monthButton.classList.toggle('is-selected', month === viewMonth);
+                monthButton.addEventListener('click', () => {
+                    viewMonth = month;
+                    quickMode = false;
+                    renderDate('selected');
+                });
+                monthGrid.appendChild(monthButton);
+            }
+            monthGrid.addEventListener('keydown', event => {
+                if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+                    return;
+                }
+                event.preventDefault();
+                const options = [...monthGrid.querySelectorAll('[data-calendar-month]')];
+                const current = options.indexOf(document.activeElement);
+                const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 };
+                let next = current;
+                if (event.key === 'Home') next = 0;
+                if (event.key === 'End') next = options.length - 1;
+                if (event.key in offsets) next = Math.min(options.length - 1, Math.max(0, current + offsets[event.key]));
+                focusWithoutScroll(options[next]);
+            });
+            monthGrid.addEventListener('focusin', event => {
+                const focused = event.target.closest('[data-calendar-month]');
+                if (!focused) return;
+                monthGrid.querySelectorAll('[data-calendar-month]').forEach(option => {
+                    option.tabIndex = option === focused ? 0 : -1;
+                });
+            });
+
+            body.append(yearList, monthGrid);
+            calendar.append(header, body, createFooter());
+            popover.replaceChildren(calendar);
+            popover.setAttribute('role', 'dialog');
+            popover.setAttribute('aria-label', '快速调整年月');
+            refreshIcons(popover);
+            positionPopover(trigger, activePlacement);
+            requestAnimationFrame(() => {
+                if (popover.hidden || activeTrigger !== trigger) return;
+                const selectedYear = popover.querySelector('.ui-calendar-year-option.is-selected');
+                if (selectedYear) {
+                    yearList.scrollTop = Math.max(
+                        0,
+                        selectedYear.offsetTop - (yearList.clientHeight - selectedYear.offsetHeight) / 2
+                    );
+                }
+                const selectedMonth = popover.querySelector('.ui-calendar-month-option.is-selected');
+                const target = focusTarget === 'back'
+                    ? back
+                    : focusTarget === 'month'
+                        ? selectedMonth
+                        : selectedYear || selectedMonth;
+                focusWithoutScroll(target);
+            });
+        }
+
+        function render(focusTarget = 'selected') {
+            if (quickMode) renderQuick(focusTarget);
+            else renderDate(focusTarget);
         }
 
         popover.replaceChildren();

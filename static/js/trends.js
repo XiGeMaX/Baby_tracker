@@ -18,6 +18,7 @@ let _trendPopoverTrigger = null;
 let _trendPopoverTimer = null;
 let _trendPopoverPositionFrame = 0;
 let _trendCalendarCursor = null;
+let _trendCalendarView = 'date';
 
 const GROWTH_MODE_STORAGE_KEY = 'baby-tracker-growth-mode';
 const GROWTH_TABLE_STORAGE_KEY = 'baby-tracker-growth-table-open';
@@ -148,7 +149,7 @@ function updateGrowthDaysDisplay() {
     const display = document.getElementById('growth-days-display');
     const select = document.getElementById('growth-days');
     if (display && select) {
-        display.textContent = select.options[select.selectedIndex]?.text || '30天';
+        display.textContent = select.options[select.selectedIndex]?.text || '半年';
     }
 }
 
@@ -270,6 +271,7 @@ function openDatePopover(trigger, inputID) {
     const input = document.getElementById(inputID);
     if (!input) return;
     _trendCalendarCursor = parseDateKey(input.value) || new Date();
+    _trendCalendarView = 'date';
     renderDatePopover(trigger, inputID, 'selected');
 }
 
@@ -283,6 +285,12 @@ function renderDatePopover(trigger, inputID, focusTarget) {
     const cursor = _trendCalendarCursor || selectedDate || todayDate;
     const year = cursor.getFullYear();
     const month = cursor.getMonth();
+    const title = trigger.dataset.popoverTitle || '选择日期';
+    if (_trendCalendarView === 'quick') {
+        renderQuickDatePopover(trigger, inputID, focusTarget, year, month, title);
+        return;
+    }
+
     const firstDay = new Date(year, month, 1);
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const cells = [];
@@ -305,14 +313,18 @@ function renderDatePopover(trigger, inputID, focusTarget) {
         cells.push('<span class="ui-calendar-blank" aria-hidden="true"></span>');
     }
 
-    const title = trigger.dataset.popoverTitle || '选择日期';
     const content = `
         <div class="ui-calendar">
             <div class="ui-calendar-header">
                 <button type="button" class="ui-calendar-nav" data-calendar-action="prev" aria-label="上个月">
                     <i data-lucide="chevron-left" class="h-4 w-4"></i>
                 </button>
-                <strong class="ui-calendar-title">${year}年${month + 1}月</strong>
+                <button type="button" class="ui-calendar-title ui-calendar-title-button"
+                    data-calendar-action="quick" aria-expanded="false"
+                    aria-label="快速调整年月，当前 ${year}年${month + 1}月">
+                    <span>${year}年${month + 1}月</span>
+                    <i data-lucide="chevron-down" class="h-3 w-3"></i>
+                </button>
                 <button type="button" class="ui-calendar-nav" data-calendar-action="next" aria-label="下个月">
                     <i data-lucide="chevron-right" class="h-4 w-4"></i>
                 </button>
@@ -337,6 +349,11 @@ function renderDatePopover(trigger, inputID, focusTarget) {
         if (action === 'prev' || action === 'next') {
             _trendCalendarCursor = new Date(year, month + (action === 'next' ? 1 : -1), 1);
             renderDatePopover(trigger, inputID, action);
+            return;
+        }
+        if (action === 'quick') {
+            _trendCalendarView = 'quick';
+            renderDatePopover(trigger, inputID, 'year');
             return;
         }
         if (action === 'today') {
@@ -367,11 +384,156 @@ function renderDatePopover(trigger, inputID, focusTarget) {
         let target = null;
         if (focusTarget === 'prev' || focusTarget === 'next') {
             target = popover.querySelector(`[data-calendar-action="${focusTarget}"]`);
+        } else if (focusTarget === 'title') {
+            target = popover.querySelector('[data-calendar-action="quick"]');
         } else {
             target = popover.querySelector('.ui-calendar-day.is-selected')
                 || popover.querySelector('.ui-calendar-day.is-today')
                 || popover.querySelector('[data-calendar-date]');
         }
+        target?.focus({ preventScroll: true });
+    });
+}
+
+function renderQuickDatePopover(trigger, inputID, focusTarget, year, month, title) {
+    const popover = document.getElementById('trend-popover');
+    const input = document.getElementById(inputID);
+    if (!popover || !input) return;
+
+    const currentYear = new Date().getFullYear();
+    const firstYear = Math.min(1900, currentYear - 100);
+    const lastYear = Math.max(2100, currentYear + 20);
+    const years = [];
+    for (let optionYear = firstYear; optionYear <= lastYear; optionYear += 1) {
+        const selected = optionYear === year;
+        years.push(`
+            <button type="button" class="ui-calendar-year-option ${selected ? 'is-selected' : ''}"
+                role="option" aria-selected="${String(selected)}"
+                tabindex="${selected ? '0' : '-1'}"
+                data-calendar-year="${optionYear}">${optionYear}</button>
+        `);
+    }
+    const months = Array.from({ length: 12 }, (_, optionMonth) => {
+        const selected = optionMonth === month;
+        return `
+            <button type="button" class="ui-calendar-month-option ${selected ? 'is-selected' : ''}"
+                aria-pressed="${String(selected)}" tabindex="${selected ? '0' : '-1'}"
+                data-calendar-month="${optionMonth}">${optionMonth + 1}月</button>
+        `;
+    });
+    const content = `
+        <div class="ui-calendar ui-calendar-quick">
+            <div class="ui-calendar-header">
+                <button type="button" class="ui-calendar-nav" data-calendar-action="back" aria-label="返回日期选择">
+                    <i data-lucide="chevron-left" class="h-4 w-4"></i>
+                </button>
+                <strong class="ui-calendar-title">调整年月</strong>
+                <span class="ui-calendar-nav-spacer" aria-hidden="true"></span>
+            </div>
+            <div class="ui-calendar-quick-body">
+                <div class="ui-calendar-year-list" role="listbox" aria-label="年份">
+                    ${years.join('')}
+                </div>
+                <div class="ui-calendar-month-grid" role="group" aria-label="月份">
+                    ${months.join('')}
+                </div>
+            </div>
+            <div class="ui-calendar-footer">
+                <button type="button" class="ui-calendar-action" data-calendar-action="today">今天</button>
+                <button type="button" class="ui-calendar-action" data-calendar-action="cancel">取消</button>
+            </div>
+        </div>
+    `;
+
+    showTrendPopover(trigger, content, 320, 'dialog', title);
+    popover.onclick = event => {
+        event.stopPropagation();
+        const action = event.target.closest('[data-calendar-action]')?.dataset.calendarAction;
+        if (action === 'back') {
+            _trendCalendarView = 'date';
+            renderDatePopover(trigger, inputID, 'title');
+            return;
+        }
+        if (action === 'today') {
+            commitCalendarDate(input, toDateKey(new Date()), trigger);
+            return;
+        }
+        if (action === 'cancel') {
+            closeTrendPopover(true);
+            return;
+        }
+        const yearOption = event.target.closest('[data-calendar-year]');
+        if (yearOption) {
+            _trendCalendarCursor = new Date(Number(yearOption.dataset.calendarYear), month, 1);
+            renderDatePopover(trigger, inputID, 'year');
+            return;
+        }
+        const monthOption = event.target.closest('[data-calendar-month]');
+        if (monthOption) {
+            _trendCalendarCursor = new Date(year, Number(monthOption.dataset.calendarMonth), 1);
+            _trendCalendarView = 'date';
+            renderDatePopover(trigger, inputID, 'selected');
+        }
+    };
+    popover.onkeydown = event => {
+        const yearList = popover.querySelector('.ui-calendar-year-list');
+        const monthGrid = popover.querySelector('.ui-calendar-month-grid');
+        if (event.target.matches('[data-calendar-year]')
+            && ['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault();
+            const options = [...yearList.querySelectorAll('[data-calendar-year]')];
+            const current = options.indexOf(document.activeElement);
+            let next = current;
+            if (event.key === 'Home') next = 0;
+            if (event.key === 'End') next = options.length - 1;
+            if (event.key === 'ArrowDown') next = Math.min(options.length - 1, current + 1);
+            if (event.key === 'ArrowUp') next = Math.max(0, current - 1);
+            options[next]?.focus({ preventScroll: true });
+            return;
+        }
+        if (event.target.matches('[data-calendar-month]')
+            && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault();
+            const options = [...monthGrid.querySelectorAll('[data-calendar-month]')];
+            const current = options.indexOf(document.activeElement);
+            const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 };
+            let next = current;
+            if (event.key === 'Home') next = 0;
+            if (event.key === 'End') next = options.length - 1;
+            if (event.key in offsets) next = Math.min(options.length - 1, Math.max(0, current + offsets[event.key]));
+            options[next]?.focus({ preventScroll: true });
+        }
+    };
+    popover.querySelector('.ui-calendar-year-list').addEventListener('focusin', event => {
+        const focused = event.target.closest('[data-calendar-year]');
+        if (!focused) return;
+        popover.querySelectorAll('[data-calendar-year]').forEach(option => {
+            option.tabIndex = option === focused ? 0 : -1;
+        });
+    });
+    popover.querySelector('.ui-calendar-month-grid').addEventListener('focusin', event => {
+        const focused = event.target.closest('[data-calendar-month]');
+        if (!focused) return;
+        popover.querySelectorAll('[data-calendar-month]').forEach(option => {
+            option.tabIndex = option === focused ? 0 : -1;
+        });
+    });
+    requestAnimationFrame(() => {
+        if (popover.hidden || _trendPopoverTrigger !== trigger) return;
+        const yearList = popover.querySelector('.ui-calendar-year-list');
+        const selectedYear = popover.querySelector('.ui-calendar-year-option.is-selected');
+        if (selectedYear) {
+            yearList.scrollTop = Math.max(
+                0,
+                selectedYear.offsetTop - (yearList.clientHeight - selectedYear.offsetHeight) / 2
+            );
+        }
+        const selectedMonth = popover.querySelector('.ui-calendar-month-option.is-selected');
+        const target = focusTarget === 'back'
+            ? popover.querySelector('[data-calendar-action="back"]')
+            : focusTarget === 'month'
+                ? selectedMonth
+                : selectedYear || selectedMonth;
         target?.focus({ preventScroll: true });
     });
 }
@@ -387,9 +549,12 @@ function showTrendPopover(trigger, content, preferredWidth, role, label) {
     const popover = document.getElementById('trend-popover');
     if (!popover) return;
     clearTimeout(_trendPopoverTimer);
-    closeTrendPopover();
+    const wasOpen = _trendPopoverTrigger === trigger
+        && !popover.hidden
+        && !popover.classList.contains('is-hidden');
+    if (!wasOpen) closeTrendPopover();
     _trendPopoverTrigger = trigger;
-    popover.className = 'trend-popover';
+    popover.className = wasOpen ? 'trend-popover is-open' : 'trend-popover';
     popover.innerHTML = content;
     popover.setAttribute('role', role);
     popover.setAttribute('aria-label', label);
@@ -397,9 +562,10 @@ function showTrendPopover(trigger, content, preferredWidth, role, label) {
     trigger.classList.add('is-open');
     trigger.setAttribute('aria-expanded', 'true');
     lucide.createIcons();
+    positionTrendPopover(trigger, preferredWidth);
+    if (wasOpen) return;
     requestAnimationFrame(() => {
-        positionTrendPopover(trigger, preferredWidth);
-        popover.classList.add('is-open');
+        if (_trendPopoverTrigger === trigger) popover.classList.add('is-open');
     });
 }
 
@@ -449,18 +615,19 @@ function positionTrendPopover(trigger, preferredWidth) {
         closeTrendPopover();
         return;
     }
-    const width = Math.min(preferredWidth, window.innerWidth - margin * 2);
+    const viewportWidth = viewport?.width || window.innerWidth;
+    const width = Math.min(preferredWidth, viewportWidth - margin * 2);
     popover.style.width = `${width}px`;
     popover.style.left = '0px';
     popover.style.top = '0px';
     const height = popover.offsetHeight;
     let left = rect.right - width;
-    left = Math.min(window.innerWidth - width - margin, Math.max(margin, left));
+    left = Math.min(viewportRight - width - margin, Math.max(viewportLeft + margin, left));
     let top = rect.bottom + gap;
-    if (top + height > window.innerHeight - margin) {
+    if (top + height > viewportBottom - margin) {
         top = rect.top - height - gap;
     }
-    top = Math.max(margin, top);
+    top = Math.max(viewportTop + margin, top);
     popover.style.left = `${Math.round(left)}px`;
     popover.style.top = `${Math.round(top)}px`;
 }
@@ -512,7 +679,7 @@ async function loadTrends() {
     const page = document.getElementById('trends-page');
     if (page) page.setAttribute('aria-busy', 'true');
 
-    const growthDays = document.getElementById('growth-days')?.value || '30';
+    const growthDays = document.getElementById('growth-days')?.value || '180';
     let url = `/api/stats/trends?growth_days=${encodeURIComponent(growthDays)}&mode=${trendsMode}`;
     if (trendsMode === 'hour') {
         const date = document.getElementById('trend-date')?.value;
@@ -796,7 +963,7 @@ function renderGrowthChart() {
     if (!hasData) return;
 
     const context = canvas.getContext('2d');
-    const chartHeight = canvas.parentElement?.clientHeight || (compact ? 156 : 286);
+    const chartHeight = canvas.parentElement?.clientHeight || (compact ? 216 : 286);
     const weightGradient = context.createLinearGradient(0, 0, 0, chartHeight);
     weightGradient.addColorStop(0, colors.accentBg);
     weightGradient.addColorStop(1, 'rgba(0,0,0,0)');
